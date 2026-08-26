@@ -2,7 +2,12 @@
 
 import pytest
 
-from delivery_router.models import DeliveryPrediction, Order, TravelTimeMatrix
+from delivery_router.models import (
+    DeliveryPrediction,
+    Order,
+    RouteEvaluation,
+    TravelTimeMatrix,
+)
 
 def test_order_accepts_valid_values() -> None:
     order = Order(
@@ -167,3 +172,118 @@ def test_delivery_prediction_rejects_inconsistent_wait() -> None:
             wait_minutes=30,
             late_minutes=0,
         )
+
+
+def make_prediction(
+    order_id: str,
+    stop_id: str,
+    age_minutes: int,
+    elapsed_minutes: int,
+    late_minutes: int = 0,
+) -> DeliveryPrediction:
+    """Create a consistent delivery prediction for route tests."""
+
+    return DeliveryPrediction(
+        order=Order(
+            order_id=order_id,
+            stop_id=stop_id,
+            age_minutes=age_minutes,
+        ),
+        elapsed_minutes=elapsed_minutes,
+        wait_minutes=age_minutes + elapsed_minutes,
+        late_minutes=late_minutes,
+    )
+
+
+def test_route_evaluation_returns_order_and_stop_sequences() -> None:
+    deliveries = (
+        make_prediction("C", "stop-c", 7, 1),
+        make_prediction("B", "stop-b", 40, 5),
+        make_prediction("A", "stop-a", 24, 8),
+    )
+
+    evaluation = RouteEvaluation(
+        restaurant_id="R",
+        deliveries=deliveries,
+        total_driving_minutes=12,
+        score=97,
+    )
+
+    assert evaluation.order_sequence == ("C", "B", "A")
+    assert evaluation.stop_sequence == ("R", "stop-c", "stop-b", "stop-a", "R")
+
+
+@pytest.mark.parametrize("restaurant_id", ["", "   "])
+def test_route_evaluation_rejects_empty_restaurant_id(
+    restaurant_id: str,
+) -> None:
+    deliveries = (make_prediction("A", "stop-a", 24, 5),)
+
+    with pytest.raises(ValueError, match="restaurant_id cannot be empty"):
+        RouteEvaluation(restaurant_id, deliveries, 9, 38)
+
+
+def test_route_evaluation_rejects_empty_deliveries() -> None:
+    with pytest.raises(ValueError, match="deliveries cannot be empty"):
+        RouteEvaluation("R", (), 0, 0)
+
+
+def test_route_evaluation_rejects_mutable_delivery_list() -> None:
+    deliveries = [make_prediction("A", "stop-a", 24, 5)]
+
+    with pytest.raises(TypeError, match="deliveries must be a tuple"):
+        RouteEvaluation("R", deliveries, 9, 38)
+
+
+def test_route_evaluation_rejects_non_prediction_item() -> None:
+    with pytest.raises(
+        TypeError,
+        match="deliveries must contain DeliveryPrediction objects",
+    ):
+        RouteEvaluation("R", ("not-a-prediction",), 9, 38)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "error_message"),
+    [
+        ("total_driving_minutes", -1, "total_driving_minutes cannot be negative"),
+        ("score", -1, "score cannot be negative"),
+    ],
+)
+def test_route_evaluation_rejects_negative_totals(
+    field_name: str,
+    value: int,
+    error_message: str,
+) -> None:
+    values = {
+        "restaurant_id": "R",
+        "deliveries": (make_prediction("A", "stop-a", 24, 5),),
+        "total_driving_minutes": 9,
+        "score": 38,
+    }
+    values[field_name] = value
+
+    with pytest.raises(ValueError, match=error_message):
+        RouteEvaluation(**values)
+
+
+def test_route_evaluation_rejects_duplicate_order_ids() -> None:
+    deliveries = (
+        make_prediction("A", "stop-a", 24, 5),
+        make_prediction("A", "different-stop", 30, 8),
+    )
+
+    with pytest.raises(ValueError, match="every order_id must be unique"):
+        RouteEvaluation("R", deliveries, 12, 100)
+
+
+def test_route_evaluation_allows_orders_at_same_stop() -> None:
+    deliveries = (
+        make_prediction("A", "shared-stop", 24, 5),
+        make_prediction("B", "shared-stop", 40, 5),
+    )
+
+    evaluation = RouteEvaluation("R", deliveries, 9, 100)
+
+    assert evaluation.order_sequence == ("A", "B")
+    assert evaluation.stop_sequence == ("R", "shared-stop", "shared-stop", "R")

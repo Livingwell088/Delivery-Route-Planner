@@ -94,3 +94,67 @@ class DeliveryPrediction:
             raise ValueError(
                 "wait_minutes must be equal to age_minutes + elapsed_minutes"
             )
+
+
+@dataclass(frozen=True, slots=True)
+class RouteEvaluation:
+    """Evaluation results for one complete delivery route"""
+
+    restaurant_id: str
+    deliveries: tuple[DeliveryPrediction, ...]
+    total_driving_minutes: int
+    score: float
+    
+    def __post_init__(self) -> None:
+
+        if not self.restaurant_id.strip():
+            raise ValueError("restaurant_id cannot be empty")
+
+        if not self.deliveries:
+            raise ValueError("deliveries cannot be empty")
+
+        if not isinstance(self.deliveries, tuple):
+            raise TypeError("deliveries must be a tuple")
+
+        if not all(isinstance(delivery, DeliveryPrediction) for delivery in self.deliveries):
+            raise TypeError("deliveries must contain DeliveryPrediction objects")
+
+        if self.total_driving_minutes < 0:
+            raise ValueError("total_driving_minutes cannot be negative")
+
+        if self.score < 0:
+            raise ValueError("score cannot be negative")
+
+        unique = set()
+
+        for delivery in self.deliveries:
+            if delivery.order.order_id in unique:
+                raise ValueError("every order_id must be unique")
+
+            unique.add(delivery.order.order_id)
+
+    @property
+    def order_sequence(self) -> tuple[str, ...]:
+        """Return order IDs in delivery order."""
+
+        return tuple(delivery.order.order_id for delivery in self.deliveries)
+
+
+    @property
+    def stop_sequence(self) -> tuple[str, ...]:
+        """Return the complete route, including restaurant start and return"""
+
+        return (
+            self.restaurant_id,
+            *(delivery.order.stop_id for delivery in self.deliveries),
+            self.restaurant_id,
+        )
+
+
+
+
+
+
+
+
+
