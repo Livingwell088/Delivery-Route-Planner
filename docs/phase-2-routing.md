@@ -25,3 +25,21 @@ the selected sequence. OR-Tools is intentionally deferred.
 
 Only synthetic or fully anonymized fixtures belong in `data/fixtures/`. Raw
 receipts and customer information must remain outside version control.
+
+
+## Scoring Rule
+
+route score = total driving time + total customer waiting time + severe-lateness penalties
+
+wait at delivery = age at route start + elapsed time until delivery
+late minutes = max(0, wait at delivery - 45)
+
+score = total driving time + total customer waiting time + 10 x total late minutes
+
+
+
+
+
+
+
+

@@ -7,6 +7,9 @@ name = "delivery-route-optimizer"
 version = "0.1.0"
 description = "Isolated prototype for age-aware delivery route optimization"
 requires-python = ">=3.11"
+dependencies = [
+    "pytest>=9.1.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
