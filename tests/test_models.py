@@ -2,7 +2,7 @@
 
 import pytest
 
-from delivery_router.models import Order, TravelTimeMatrix
+from delivery_router.models import DeliveryPrediction, Order, TravelTimeMatrix
 
 def test_order_accepts_valid_values() -> None:
     order = Order(
@@ -111,4 +111,59 @@ def test_negative_travel_time_is_rejected() -> None:
                 "R": {"A": -1},
                 "A": {"R": 4},
             }
+        )
+
+
+def test_delivery_prediction_accepts_consistent_values() -> None:
+    order = Order(order_id="B", stop_id="stop-b", age_minutes=40)
+
+    prediction = DeliveryPrediction(
+        order=order,
+        elapsed_minutes=8,
+        wait_minutes=48,
+        late_minutes=3,
+    )
+
+    assert prediction.order is order
+    assert prediction.elapsed_minutes == 8
+    assert prediction.wait_minutes == 48
+    assert prediction.late_minutes == 3
+
+
+@pytest.mark.parametrize(
+    ("field_name", "error_message"),
+    [
+        ("elapsed_minutes", "elapsed_minutes cannot be negative"),
+        ("wait_minutes", "wait_minutes cannot be negative"),
+        ("late_minutes", "late_minutes cannot be negative"),
+    ],
+)
+def test_delivery_prediction_rejects_negative_minutes(
+    field_name: str,
+    error_message: str,
+) -> None:
+    values = {
+        "order": Order(order_id="A", stop_id="stop-a", age_minutes=10),
+        "elapsed_minutes": 5,
+        "wait_minutes": 15,
+        "late_minutes": 0,
+    }
+    values[field_name] = -1
+
+    with pytest.raises(ValueError, match=error_message):
+        DeliveryPrediction(**values)
+
+
+def test_delivery_prediction_rejects_inconsistent_wait() -> None:
+    order = Order(order_id="A", stop_id="stop-a", age_minutes=24)
+
+    with pytest.raises(
+        ValueError,
+        match=r"wait_minutes must be equal to age_minutes \+ elapsed_minutes",
+    ):
+        DeliveryPrediction(
+            order=order,
+            elapsed_minutes=5,
+            wait_minutes=30,
+            late_minutes=0,
         )
