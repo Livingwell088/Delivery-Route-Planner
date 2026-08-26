@@ -31,6 +31,15 @@ class ScoringConfig:
             raise ValueError("At least one weight should be greater than zero")
 
 
+def calculate_wait_minutes(starting_age_minutes: int, elapsed_route_minutes: int) -> int:
+    return starting_age_minutes + elapsed_route_minutes
+
+def calculate_late_minutes(wait_minutes: int, severe_lateness_minutes: int) -> int:
+    return max(0, wait_minutes - severe_lateness_minutes)
+
+# score = total driving time + total customer waiting time + 10 x total late minutes
+def calculate_route_score(total_driving_minutes: int, total_customer_wait_minutes: int, total_late_minutes: int, config: ScoringConfig) -> float:
+    return (total_driving_minutes * config.driving_weight) + (total_customer_wait_minutes * config.waiting_weight) + (total_late_minutes * config.late_minute_weight)
 
         
 
