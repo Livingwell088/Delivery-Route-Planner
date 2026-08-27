@@ -29,6 +29,23 @@ def shortest_route_baseline(restaurant_id: str, orders: tuple[Order, ...], matri
     return min(routes, key=lambda route: route.total_driving_minutes)
 
 
+
+def age_aware_route(restaurant_id: str, orders: tuple[Order, ...], matrix: TravelTimeMatrix, config: ScoringConfig) -> RouteEvaluation:
+    """Evaluate orders but takes into account the age of each order"""
+
+    if not orders:
+        raise ValueError("orders cannot be empty")
+
+    routes = []
+    
+
+    for current in permutations(orders):
+        routes.append(evaluate_route(restaurant_id=restaurant_id, orders=current, matrix=matrix, config=config))
+
+    return min(routes, key=lambda route: route.score)
+
+
+
 def main():
 
     orders = (

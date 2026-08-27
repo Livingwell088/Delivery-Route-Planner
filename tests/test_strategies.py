@@ -4,7 +4,11 @@ import pytest
 
 from delivery_router.models import Order, TravelTimeMatrix
 from delivery_router.scoring import ScoringConfig
-from delivery_router.strategies import oldest_order_first, shortest_route_baseline
+from delivery_router.strategies import (
+    age_aware_route,
+    oldest_order_first,
+    shortest_route_baseline,
+)
 
 
 def test_oldest_order_first_matches_baseline_scenario() -> None:
@@ -122,3 +126,88 @@ def test_shortest_route_baseline_rejects_empty_orders() -> None:
 
     with pytest.raises(ValueError, match="orders cannot be empty"):
         shortest_route_baseline("R", (), matrix, ScoringConfig())
+
+
+def test_age_aware_route_matches_second_hand_calculated_scenario() -> None:
+    orders = (
+        Order(order_id="A", stop_id="A", age_minutes=44),
+        Order(order_id="B", stop_id="B", age_minutes=10),
+        Order(order_id="C", stop_id="C", age_minutes=5),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"A": 8, "B": 2, "C": 3},
+            "A": {"R": 8, "B": 8, "C": 8},
+            "B": {"R": 2, "A": 8, "C": 2},
+            "C": {"R": 3, "A": 7, "B": 2},
+        }
+    )
+
+    evaluation = age_aware_route("R", orders, matrix, ScoringConfig())
+
+    assert evaluation.order_sequence == ("A", "C", "B")
+    assert evaluation.total_driving_minutes == 20
+    assert tuple(
+        delivery.wait_minutes for delivery in evaluation.deliveries
+    ) == (52, 21, 28)
+    assert evaluation.total_customer_wait_minutes == 101
+    assert evaluation.total_late_minutes == 7
+    assert evaluation.score == 191
+
+
+def test_age_aware_route_matches_first_hand_calculated_scenario() -> None:
+    orders = (
+        Order(order_id="A", stop_id="A", age_minutes=24),
+        Order(order_id="B", stop_id="B", age_minutes=40),
+        Order(order_id="C", stop_id="C", age_minutes=7),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"A": 5, "B": 5, "C": 1},
+            "A": {"R": 4, "B": 3, "C": 5},
+            "B": {"R": 4, "A": 3, "C": 4},
+            "C": {"R": 2, "A": 5, "B": 4},
+        }
+    )
+
+    evaluation = age_aware_route("R", orders, matrix, ScoringConfig())
+
+    assert evaluation.order_sequence == ("C", "B", "A")
+    assert evaluation.total_driving_minutes == 12
+    assert evaluation.total_customer_wait_minutes == 85
+    assert evaluation.total_late_minutes == 0
+    assert evaluation.score == 97
+
+
+def test_age_aware_route_matches_shortest_route_with_driving_only_config() -> None:
+    orders = (
+        Order(order_id="A", stop_id="A", age_minutes=44),
+        Order(order_id="B", stop_id="B", age_minutes=10),
+        Order(order_id="C", stop_id="C", age_minutes=5),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"A": 8, "B": 2, "C": 3},
+            "A": {"R": 8, "B": 8, "C": 8},
+            "B": {"R": 2, "A": 8, "C": 2},
+            "C": {"R": 3, "A": 7, "B": 2},
+        }
+    )
+    config = ScoringConfig(
+        driving_weight=1,
+        waiting_weight=0,
+        late_minute_weight=0,
+    )
+
+    age_aware = age_aware_route("R", orders, matrix, config)
+    shortest = shortest_route_baseline("R", orders, matrix, config)
+
+    assert age_aware.order_sequence == shortest.order_sequence
+    assert age_aware.order_sequence == ("B", "C", "A")
+
+
+def test_age_aware_route_rejects_empty_orders() -> None:
+    matrix = TravelTimeMatrix(times={"R": {}})
+
+    with pytest.raises(ValueError, match="orders cannot be empty"):
+        age_aware_route("R", (), matrix, ScoringConfig())
