@@ -1,8 +1,10 @@
 """Tests for exhaustive and baseline routing strategies."""
 
+import pytest
+
 from delivery_router.models import Order, TravelTimeMatrix
 from delivery_router.scoring import ScoringConfig
-from delivery_router.strategies import oldest_order_first
+from delivery_router.strategies import oldest_order_first, shortest_route_baseline
 
 
 def test_oldest_order_first_matches_baseline_scenario() -> None:
@@ -58,3 +60,65 @@ def test_oldest_order_first_preserves_input_order_for_equal_ages() -> None:
     )
 
     assert evaluation.order_sequence == ("X", "Y")
+
+
+def test_shortest_route_baseline_matches_hand_calculated_scenario() -> None:
+    orders = (
+        Order(order_id="A", stop_id="A", age_minutes=44),
+        Order(order_id="B", stop_id="B", age_minutes=10),
+        Order(order_id="C", stop_id="C", age_minutes=5),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"A": 8, "B": 2, "C": 3},
+            "A": {"R": 8, "B": 8, "C": 8},
+            "B": {"R": 2, "A": 8, "C": 2},
+            "C": {"R": 3, "A": 7, "B": 2},
+        }
+    )
+
+    evaluation = shortest_route_baseline(
+        restaurant_id="R",
+        orders=orders,
+        matrix=matrix,
+        config=ScoringConfig(),
+    )
+
+    assert evaluation.order_sequence == ("B", "C", "A")
+    assert evaluation.total_driving_minutes == 19
+    assert tuple(
+        delivery.wait_minutes for delivery in evaluation.deliveries
+    ) == (12, 9, 55)
+    assert evaluation.total_customer_wait_minutes == 76
+    assert evaluation.total_late_minutes == 10
+    assert evaluation.score == 195
+
+
+def test_shortest_route_baseline_uses_first_permutation_for_tie() -> None:
+    orders = (
+        Order(order_id="Y", stop_id="Y", age_minutes=0),
+        Order(order_id="X", stop_id="X", age_minutes=0),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"X": 1, "Y": 1},
+            "X": {"R": 1, "Y": 1},
+            "Y": {"R": 1, "X": 1},
+        }
+    )
+
+    evaluation = shortest_route_baseline(
+        restaurant_id="R",
+        orders=orders,
+        matrix=matrix,
+        config=ScoringConfig(),
+    )
+
+    assert evaluation.order_sequence == ("Y", "X")
+
+
+def test_shortest_route_baseline_rejects_empty_orders() -> None:
+    matrix = TravelTimeMatrix(times={"R": {}})
+
+    with pytest.raises(ValueError, match="orders cannot be empty"):
+        shortest_route_baseline("R", (), matrix, ScoringConfig())
