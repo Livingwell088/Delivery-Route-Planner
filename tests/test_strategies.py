@@ -6,6 +6,7 @@ from delivery_router.models import Order, TravelTimeMatrix
 from delivery_router.scoring import ScoringConfig
 from delivery_router.strategies import (
     age_aware_route,
+    compare_strategies,
     oldest_order_first,
     shortest_route_baseline,
 )
@@ -211,3 +212,56 @@ def test_age_aware_route_rejects_empty_orders() -> None:
 
     with pytest.raises(ValueError, match="orders cannot be empty"):
         age_aware_route("R", (), matrix, ScoringConfig())
+
+
+def test_compare_strategies_returns_expected_routes_and_metrics() -> None:
+    orders = (
+        Order(order_id="A", stop_id="A", age_minutes=44),
+        Order(order_id="B", stop_id="B", age_minutes=10),
+        Order(order_id="C", stop_id="C", age_minutes=5),
+    )
+    matrix = TravelTimeMatrix(
+        times={
+            "R": {"A": 8, "B": 2, "C": 3},
+            "A": {"R": 8, "B": 8, "C": 8},
+            "B": {"R": 2, "A": 8, "C": 2},
+            "C": {"R": 3, "A": 7, "B": 2},
+        }
+    )
+
+    comparison = compare_strategies(
+        restaurant_id="R",
+        orders=orders,
+        matrix=matrix,
+        config=ScoringConfig(),
+    )
+
+    assert set(comparison) == {
+        "shortest_route",
+        "oldest_order_first",
+        "age_aware",
+    }
+
+    shortest = comparison["shortest_route"]
+    assert shortest.order_sequence == ("B", "C", "A")
+    assert shortest.total_driving_minutes == 19
+    assert shortest.average_customer_wait_minutes == pytest.approx(76 / 3)
+    assert shortest.maximum_customer_wait_minutes == 55
+    assert shortest.severely_late_order_count == 1
+    assert shortest.score == 195
+
+    oldest = comparison["oldest_order_first"]
+    assert oldest.order_sequence == ("A", "B", "C")
+    assert oldest.total_driving_minutes == 21
+    assert oldest.average_customer_wait_minutes == pytest.approx(101 / 3)
+    assert oldest.maximum_customer_wait_minutes == 52
+    assert oldest.severely_late_order_count == 1
+    assert oldest.score == 192
+
+    age_aware = comparison["age_aware"]
+    assert age_aware.order_sequence == ("A", "C", "B")
+    assert age_aware.total_driving_minutes == 20
+    assert age_aware.average_customer_wait_minutes == pytest.approx(101 / 3)
+    assert age_aware.maximum_customer_wait_minutes == 52
+    assert age_aware.severely_late_order_count == 1
+    assert age_aware.score == 191

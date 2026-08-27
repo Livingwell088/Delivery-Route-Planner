@@ -45,6 +45,34 @@ def age_aware_route(restaurant_id: str, orders: tuple[Order, ...], matrix: Trave
     return min(routes, key=lambda route: route.score)
 
 
+def compare_strategies(restaurant_id: str, orders: tuple[Order, ...], matrix: TravelTimeMatrix, config: ScoringConfig) -> dict[str, RouteEvaluation]:
+    """Evaluate routes of the same orders with each routing strategy"""
+
+    return {
+        "shortest_route": shortest_route_baseline(
+            restaurant_id,
+            orders,
+            matrix,
+            config,
+        ),
+        "oldest_order_first": oldest_order_first(
+            restaurant_id,
+            orders,
+            matrix,
+            config,
+        ),
+        "age_aware": age_aware_route(
+            restaurant_id,
+            orders,
+            matrix,
+            config,
+        ),
+    }
+
+
+
+
+
 
 def main():
 
