@@ -287,3 +287,28 @@ def test_route_evaluation_allows_orders_at_same_stop() -> None:
 
     assert evaluation.order_sequence == ("A", "B")
     assert evaluation.stop_sequence == ("R", "shared-stop", "shared-stop", "R")
+
+
+def test_route_evaluation_calculates_customer_wait_metrics() -> None:
+    deliveries = (
+        make_prediction("C", "stop-c", 7, 1),
+        make_prediction("B", "stop-b", 40, 5),
+        make_prediction("A", "stop-a", 24, 8),
+    )
+    evaluation = RouteEvaluation("R", deliveries, 12, 97)
+
+    assert evaluation.total_customer_wait_minutes == 85
+    assert evaluation.average_customer_wait_minutes == pytest.approx(85 / 3)
+    assert evaluation.maximum_customer_wait_minutes == 45
+
+
+def test_route_evaluation_calculates_lateness_metrics() -> None:
+    deliveries = (
+        make_prediction("A", "stop-a", 24, 5),
+        make_prediction("B", "stop-b", 40, 8, late_minutes=3),
+        make_prediction("C", "stop-c", 7, 12),
+    )
+    evaluation = RouteEvaluation("R", deliveries, 14, 140)
+
+    assert evaluation.total_late_minutes == 3
+    assert evaluation.severely_late_order_count == 1

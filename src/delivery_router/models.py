@@ -151,6 +151,45 @@ class RouteEvaluation:
         )
 
 
+    @property
+    def total_customer_wait_minutes(self) -> int:
+        """Return the combined customer wait across all deliveries."""
+
+        return sum(delivery.wait_minutes for delivery in self.deliveries)
+
+
+    @property
+    def average_customer_wait_minutes(self) -> float:
+        """Return the average customer wait of the deliveries."""
+
+        return self.total_customer_wait_minutes / len(self.deliveries)
+
+
+    @property
+    def maximum_customer_wait_minutes(self) -> int:
+        """Return the max customer wait time."""
+
+        return max(delivery.wait_minutes for delivery in self.deliveries)
+
+
+    @property
+    def total_late_minutes(self) -> int:
+        """Return the total late minutes."""
+
+        return sum(delivery.late_minutes for delivery in self.deliveries)
+
+
+
+    @property
+    def severely_late_order_count(self) -> int:
+        """Return the number of severely late orders"""
+
+        return sum(delivery.late_minutes > 0 for delivery in self.deliveries)
+
+
+
+
+
 
 
 
