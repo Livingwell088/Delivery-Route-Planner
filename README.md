@@ -53,10 +53,19 @@ Interactive OpenAPI documentation is then available at
   `DELETE /orders/{order_id}`
 - `POST /routes/optimize`
 
-The current development travel-matrix service requires latitude and longitude
-for every address. It uses a deterministic distance estimate and is designed
-to be replaced by a live maps adapter without changing the API or routing
-domain.
+Without provider configuration, the development travel-matrix service requires
+latitude and longitude and uses a deterministic distance estimate. To use
+Google geocoding and road durations instead, enable the Geocoding API and
+Routes API in Google Cloud, then start the server from the same PowerShell
+session in which the key is set:
+
+```powershell
+$env:GOOGLE_MAPS_API_KEY="your-key-here"
+uvicorn delivery_router.api.app:app --reload --port 8002
+```
+
+Never commit the API key. When Google mode is enabled, optimization requests
+may contain address text without manually supplied coordinates.
 
 ## Routing strategies
 

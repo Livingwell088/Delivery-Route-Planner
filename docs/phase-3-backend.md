@@ -24,6 +24,40 @@ can replace the development implementations without rewriting the optimizer.
 - Optimization is capped at eight orders because Phase 2 enumerates every
   permutation.
 
+## Google Maps mode
+
+Set `GOOGLE_MAPS_API_KEY` before starting Uvicorn to activate the Google
+adapters. `/addresses/validate` will geocode addresses and return Google's
+canonical address, Place ID, and coordinates. `/routes/optimize` will use the
+Routes API to calculate road-based durations instead of the local estimate.
+
+The implementation deliberately omits `TRAFFIC_AWARE`, keeping matrix calls on
+the lower-cost Essentials SKU. Provider calls have a ten-second timeout and
+are translated into the API's stable structured-error format. Unit tests use
+mock HTTP transports and never call or bill Google.
+
+Geocoding is restricted to the United States, influenced toward Massachusetts,
+and biased to a viewport around Worcester. Route optimization geocodes every
+location first and sends Google's canonical addresses to the Routes API. This
+lets a short input such as `455 Main St` resolve locally instead of selecting a
+similarly named address in another country. The driver must still confirm the
+canonical address returned by `/addresses/validate` before routing.
+
+With Google mode active, coordinates can be omitted:
+
+```json
+{
+  "start": {"formatted_address": "217A Chandler St, Worcester, MA"},
+  "orders": [
+    {
+      "order_id": "A",
+      "address": {"formatted_address": "455 Main St, Worcester, MA"},
+      "age_minutes": 32
+    }
+  ]
+}
+```
+
 ## Example optimization request
 
 ```json

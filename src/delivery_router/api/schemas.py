@@ -33,6 +33,8 @@ class AddressValidationRequest(ApiModel):
 class AddressValidationResponse(ApiModel):
     is_valid: bool
     normalized_address: str | None = None
+    place_id: str | None = None
+    coordinates: Coordinates | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -61,6 +63,8 @@ class OptimizeRouteRequest(ApiModel):
         ids = [order.order_id for order in self.orders]
         if len(ids) != len(set(ids)):
             raise ValueError("order_id values must be unique")
+        if "start" in ids:
+            raise ValueError("order_id 'start' is reserved")
         return self
 
 

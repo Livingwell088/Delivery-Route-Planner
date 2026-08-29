@@ -67,12 +67,21 @@ class CoordinateTravelMatrixService:
 
 
 class RouteOptimizationService:
-    def __init__(self, matrix_service: CoordinateTravelMatrixService | None = None):
+    def __init__(
+        self,
+        matrix_service: CoordinateTravelMatrixService | None = None,
+        address_service: AddressValidationService | None = None,
+    ):
         self.matrix_service = matrix_service or CoordinateTravelMatrixService()
+        self.address_service = address_service
 
     def optimize(self, request: OptimizeRouteRequest) -> OptimizeRouteResponse:
-        address_by_order = {order.order_id: order.address for order in request.orders}
-        locations = {"start": request.start, **address_by_order}
+        start = self._resolve_address(request.start)
+        address_by_order = {
+            order.order_id: self._resolve_address(order.address)
+            for order in request.orders
+        }
+        locations = {"start": start, **address_by_order}
         matrix = self.matrix_service.build(locations)
         orders = tuple(
             Order(order_id=order.order_id, stop_id=order.order_id, age_minutes=order.age_minutes)
@@ -104,4 +113,20 @@ class RouteOptimizationService:
             total_drive_minutes=selected.total_driving_minutes,
             score=selected.score,
             explanation=explanation,
+        )
+
+    def _resolve_address(self, address: Address) -> Address:
+        if self.address_service is None:
+            return address
+        result = self.address_service.validate(address.formatted_address)
+        if not result.is_valid or result.normalized_address is None:
+            raise ApiError(
+                422,
+                "address_not_found",
+                "Google Maps could not confidently locate an address",
+                {"address": address.formatted_address, "warnings": result.warnings},
+            )
+        return Address(
+            formatted_address=result.normalized_address,
+            coordinates=result.coordinates,
         )

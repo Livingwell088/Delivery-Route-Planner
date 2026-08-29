@@ -45,6 +45,8 @@ def test_address_validation_returns_normalized_result_and_warning() -> None:
     assert valid.json() == {
         "is_valid": True,
         "normalized_address": "10 Main St",
+        "place_id": None,
+        "coordinates": None,
         "warnings": [],
     }
     assert invalid.json()["is_valid"] is False

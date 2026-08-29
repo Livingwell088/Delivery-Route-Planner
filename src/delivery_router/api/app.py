@@ -1,6 +1,7 @@
 """FastAPI application factory and endpoints."""
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from uuid import uuid4
@@ -8,6 +9,11 @@ from uuid import uuid4
 from fastapi import FastAPI, Request, Response, status
 
 from delivery_router.api.errors import ApiError, register_error_handlers
+from delivery_router.api.google_maps import (
+    GoogleAddressValidationService,
+    GoogleMapsClient,
+    GoogleTravelMatrixService,
+)
 from delivery_router.api.repositories import InMemoryOrderRepository
 from delivery_router.api.schemas import (
     AddressValidationRequest,
@@ -27,7 +33,15 @@ def create_app(
     repository: InMemoryOrderRepository | None = None,
     address_service: AddressValidationService | None = None,
     route_service: RouteOptimizationService | None = None,
+    google_api_key: str | None = None,
 ) -> FastAPI:
+    if google_api_key:
+        google_client = GoogleMapsClient(google_api_key)
+        address_service = address_service or GoogleAddressValidationService(google_client)
+        route_service = route_service or RouteOptimizationService(
+            matrix_service=GoogleTravelMatrixService(google_client),
+            address_service=address_service,
+        )
     app = FastAPI(title="Delivery Route Optimizer API", version="0.1.0")
     app.state.orders = repository or InMemoryOrderRepository()
     app.state.address_service = address_service or AddressValidationService()
@@ -85,4 +99,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(google_api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
