@@ -1,6 +1,8 @@
 """Google Maps adapters for geocoding and road travel-time matrices."""
 
 from math import ceil
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -8,6 +10,8 @@ import httpx
 from delivery_router.api.errors import ApiError
 from delivery_router.api.schemas import Address, AddressValidationResponse, Coordinates
 from delivery_router.models import TravelTimeMatrix
+
+logger = logging.getLogger("delivery_router.api.google_maps")
 
 
 class GoogleMapsClient:
@@ -26,6 +30,7 @@ class GoogleMapsClient:
             "country:US|administrative_area:MA|locality:Worcester"
         ),
         geocoding_bounds: str = "42.20,-71.90|42.35,-71.70",
+        max_attempts: int = 2,
     ) -> None:
         if not api_key.strip():
             raise ValueError("Google Maps API key cannot be empty")
@@ -34,10 +39,12 @@ class GoogleMapsClient:
         self.geocoding_region = geocoding_region
         self.geocoding_components = geocoding_components
         self.geocoding_bounds = geocoding_bounds
+        self.max_attempts = max_attempts
 
     def request_geocode(self, address: str) -> dict[str, Any]:
-        try:
-            response = self.client.get(
+        response = self._request(
+            "geocoding",
+            lambda: self.client.get(
                 self.geocoding_url,
                 params={
                     "address": address,
@@ -46,15 +53,17 @@ class GoogleMapsClient:
                     "components": self.geocoding_components,
                     "bounds": self.geocoding_bounds,
                 },
-            )
-            response.raise_for_status()
+            ),
+        )
+        try:
             return response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+        except ValueError as exc:
             raise _provider_unavailable() from exc
 
     def request_matrix(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        try:
-            response = self.client.post(
+        response = self._request(
+            "route_matrix",
+            lambda: self.client.post(
                 self.matrix_url,
                 headers={
                     "Content-Type": "application/json",
@@ -64,14 +73,58 @@ class GoogleMapsClient:
                     ),
                 },
                 json=payload,
-            )
-            response.raise_for_status()
+            ),
+        )
+        try:
             value = response.json()
             if not isinstance(value, list):
                 raise ValueError("matrix response must be a list")
             return value
-        except (httpx.HTTPError, ValueError) as exc:
+        except ValueError as exc:
             raise _provider_unavailable() from exc
+
+    def _request(self, operation: str, send: Any) -> httpx.Response:
+        started = time.perf_counter()
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                response = send()
+                if response.status_code in {401, 403}:
+                    raise ApiError(
+                        503,
+                        "map_provider_configuration_error",
+                        "Google Maps rejected the backend credentials or configuration",
+                    )
+                if response.status_code == 429:
+                    if attempt == self.max_attempts:
+                        raise ApiError(
+                            503,
+                            "map_provider_rate_limited",
+                            "Google Maps quota is temporarily unavailable",
+                        )
+                    continue
+                if response.status_code >= 500:
+                    if attempt < self.max_attempts:
+                        continue
+                    raise _provider_unavailable()
+                response.raise_for_status()
+                logger.info(
+                    "google_request_complete operation=%s status=%s attempts=%s duration_ms=%.1f",
+                    operation,
+                    response.status_code,
+                    attempt,
+                    (time.perf_counter() - started) * 1000,
+                )
+                return response
+            except ApiError:
+                raise
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                last_error = exc
+                if attempt == self.max_attempts:
+                    break
+            except httpx.HTTPError as exc:
+                raise _provider_unavailable() from exc
+        raise _provider_unavailable() from last_error
 
 
 class GoogleAddressValidationService:
@@ -81,7 +134,8 @@ class GoogleAddressValidationService:
         self.client = client
 
     def validate(self, address: str) -> AddressValidationResponse:
-        payload = self.client.request_geocode(address)
+        normalized = " ".join(address.split())
+        payload = self.client.request_geocode(normalized)
         provider_status = payload.get("status")
         if provider_status == "ZERO_RESULTS":
             return AddressValidationResponse(

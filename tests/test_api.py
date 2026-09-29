@@ -28,6 +28,11 @@ class FixedMatrixService:
         )
 
 
+class BrokenAddressService:
+    def validate(self, _address: str):
+        raise RuntimeError("private implementation detail")
+
+
 def test_health_check() -> None:
     response = TestClient(create_app()).get("/health")
 
@@ -53,6 +58,25 @@ def test_address_validation_returns_normalized_result_and_warning() -> None:
     assert invalid.json()["warnings"]
 
 
+def test_unexpected_failures_have_safe_structured_response() -> None:
+    client = TestClient(
+        create_app(address_service=BrokenAddressService()),
+        raise_server_exceptions=False,
+    )
+
+    response = client.post("/addresses/validate", json={"address": "10 Main St"})
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "internal_error",
+            "message": "An unexpected server error occurred",
+            "details": None,
+        }
+    }
+    assert "private implementation detail" not in response.text
+
+
 def test_order_lifecycle_and_structured_not_found_error() -> None:
     client = TestClient(create_app())
     payload = {"order_id": "A", "address": address("10 Main St"), "age_minutes": 24}
@@ -69,6 +93,24 @@ def test_order_lifecycle_and_structured_not_found_error() -> None:
     assert deleted.status_code == 204
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "order_not_found"
+
+
+def test_order_can_be_updated_without_changing_its_id() -> None:
+    client = TestClient(create_app())
+    client.post(
+        "/orders",
+        json={"order_id": "A", "address": address("10 Main St"), "age_minutes": 24},
+    )
+
+    response = client.put(
+        "/orders/A",
+        json={"address": address("12 Main St"), "age_minutes": 30},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["order_id"] == "A"
+    assert response.json()["address"]["formatted_address"] == "12 Main St"
+    assert response.json()["age_minutes"] == 30
 
 
 def test_complete_optimization_workflow_uses_phase_two_engine() -> None:

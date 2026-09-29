@@ -1,7 +1,6 @@
 """FastAPI application factory and endpoints."""
 
 import logging
-import os
 import time
 from collections.abc import Callable
 from uuid import uuid4
@@ -23,8 +22,10 @@ from delivery_router.api.schemas import (
     OptimizeRouteResponse,
     OrderCreate,
     OrderResponse,
+    OrderUpdate,
 )
 from delivery_router.api.services import AddressValidationService, RouteOptimizationService
+from delivery_router.api.settings import Settings
 
 logger = logging.getLogger("delivery_router.api")
 
@@ -34,9 +35,23 @@ def create_app(
     address_service: AddressValidationService | None = None,
     route_service: RouteOptimizationService | None = None,
     google_api_key: str | None = None,
+    settings: Settings | None = None,
 ) -> FastAPI:
+    settings = settings or Settings(
+        _env_file=None,
+        google_maps_api_key=google_api_key,
+    )
+    configured_key = settings.google_maps_api_key
+    google_api_key = configured_key.get_secret_value() if configured_key else None
     if google_api_key:
-        google_client = GoogleMapsClient(google_api_key)
+        google_client = GoogleMapsClient(
+            google_api_key,
+            timeout_seconds=settings.google_maps_timeout_seconds,
+            geocoding_region=settings.google_maps_region,
+            geocoding_components=settings.google_maps_components,
+            geocoding_bounds=settings.google_maps_bounds,
+            max_attempts=settings.google_maps_max_attempts,
+        )
         address_service = address_service or GoogleAddressValidationService(google_client)
         route_service = route_service or RouteOptimizationService(
             matrix_service=GoogleTravelMatrixService(google_client),
@@ -86,6 +101,13 @@ def create_app(
             raise ApiError(404, "order_not_found", f"Order '{order_id}' was not found")
         return order
 
+    @app.put("/orders/{order_id}", response_model=OrderResponse, responses={404: {"model": ErrorResponse}})
+    def update_order(order_id: str, payload: OrderUpdate) -> OrderResponse:
+        order = app.state.orders.update(order_id, payload)
+        if order is None:
+            raise ApiError(404, "order_not_found", f"Order '{order_id}' was not found")
+        return order
+
     @app.delete("/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_order(order_id: str) -> Response:
         if not app.state.orders.delete(order_id):
@@ -99,4 +121,4 @@ def create_app(
     return app
 
 
-app = create_app(google_api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
+app = create_app(settings=Settings())

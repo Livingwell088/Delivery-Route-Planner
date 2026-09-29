@@ -1,10 +1,13 @@
 """Application errors and consistent HTTP error serialization."""
 
 from typing import Any
+import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("delivery_router.api")
 
 
 class ApiError(Exception):
@@ -36,3 +39,19 @@ def register_error_handlers(app: FastAPI) -> None:
             for error in exc.errors()
         ]
         return _response(422, "validation_error", "Request validation failed", details)
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        logger.exception(
+            "unhandled_error method=%s path=%s",
+            request.method,
+            request.url.path,
+            exc_info=exc,
+        )
+        return _response(
+            500,
+            "internal_error",
+            "An unexpected server error occurred",
+        )

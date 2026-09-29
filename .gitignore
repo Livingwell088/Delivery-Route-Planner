@@ -12,9 +12,12 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+mobile/node_modules/
+mobile/.expo/
 
 # Never commit raw customer receipts or local test data.
 data/raw/
 data/private/
 *.env
 .env*
+!.env.example

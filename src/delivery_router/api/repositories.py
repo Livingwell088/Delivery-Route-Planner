@@ -1,6 +1,6 @@
 """Persistence boundaries for orders."""
 
-from delivery_router.api.schemas import OrderCreate, OrderResponse
+from delivery_router.api.schemas import OrderCreate, OrderResponse, OrderUpdate
 
 
 class InMemoryOrderRepository:
@@ -19,6 +19,13 @@ class InMemoryOrderRepository:
 
     def get(self, order_id: str) -> OrderResponse | None:
         return self._orders.get(order_id)
+
+    def update(self, order_id: str, order: OrderUpdate) -> OrderResponse | None:
+        if order_id not in self._orders:
+            return None
+        saved = OrderResponse(order_id=order_id, **order.model_dump())
+        self._orders[order_id] = saved
+        return saved
 
     def delete(self, order_id: str) -> bool:
         return self._orders.pop(order_id, None) is not None

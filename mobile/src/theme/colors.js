@@ -1,0 +1,15 @@
+export const colors = {
+  black: '#15130F',
+  ink: '#211D14',
+  gold: '#E2AE22',
+  deepGold: '#A86F00',
+  cream: '#F3D98B',
+  parchment: '#FBF4DF',
+  card: '#FFFDF7',
+  muted: '#71664E',
+  border: '#DCC788',
+  successBackground: '#F5E8B8',
+  successText: '#5E460D',
+  errorBackground: '#F7E1D5',
+  errorText: '#8D3526',
+};

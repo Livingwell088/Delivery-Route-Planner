@@ -111,22 +111,21 @@ the structure of a field is needed for testing.
 Receipt collection may continue while other specification work proceeds, but
 Phase 1 is not complete until the representative anonymized test set exists.
 
-## Remaining Phase 1 decisions
 
-The following items still need to be specified before V1 is fully defined:
-
-- Measurable MVP acceptance criteria
-- Behavior when receipt scanning fails entirely
-- Behavior when the map provider or network is unavailable
-- Whether a removed order can be restored with an undo action
-- Exact delivered-order confirmation behavior
 
 ## Completion criteria
 
 Phase 1 is complete when:
 
-- The V1 workflow, extracted data, models, scoring, errors, confirmations, and
-  acceptance criteria are documented.
-- The team can describe exactly what V1 does.
-- Approximately 20-50 representative, safely anonymized receipt images are
-  available for testing.
+- Descriptions of the project is stated in detail.
+- Test data is provided
+
+
+
+## Developer's Note to Self
+
+- Phase 1 was basically the overview of the project
+- The specific description and details of the project was stated.
+- The intended process of use for the app was specified.
+- The ideal end product
+- Had the AI generate a test data set using an image of the restaurant's receipt. Everything from a normal receipt to a different angle to different shades.

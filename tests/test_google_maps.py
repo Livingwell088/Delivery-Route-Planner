@@ -64,6 +64,33 @@ def test_google_geocoding_returns_invalid_for_no_results() -> None:
     assert result.warnings == ["Google Maps could not locate this address."]
 
 
+def test_google_client_retries_temporary_provider_failure() -> None:
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"status": "ZERO_RESULTS", "results": []})
+
+    service = GoogleAddressValidationService(mock_client(handler))
+
+    assert service.validate("10 Main St").is_valid is False
+    assert calls == 2
+
+
+def test_google_client_translates_forbidden_response() -> None:
+    service = GoogleAddressValidationService(
+        mock_client(lambda _request: httpx.Response(403))
+    )
+
+    with pytest.raises(ApiError) as caught:
+        service.validate("10 Main St")
+
+    assert caught.value.code == "map_provider_configuration_error"
+
+
 def test_google_matrix_converts_route_seconds_to_complete_minute_matrix() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-goog-api-key"] == "test-key"

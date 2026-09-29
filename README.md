@@ -49,18 +49,19 @@ Interactive OpenAPI documentation is then available at
 `http://127.0.0.1:8000/docs`. The Phase 3 endpoints are:
 
 - `POST /addresses/validate`
-- `POST /orders`, `GET /orders`, `GET /orders/{order_id}`, and
-  `DELETE /orders/{order_id}`
+- `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
+  `PUT /orders/{order_id}`, and `DELETE /orders/{order_id}`
 - `POST /routes/optimize`
 
 Without provider configuration, the development travel-matrix service requires
 latitude and longitude and uses a deterministic distance estimate. To use
 Google geocoding and road durations instead, enable the Geocoding API and
-Routes API in Google Cloud, then start the server from the same PowerShell
-session in which the key is set:
+Routes API in Google Cloud. Copy `.env.example` to `.env`, replace the key
+placeholder, and start the server:
 
 ```powershell
-$env:GOOGLE_MAPS_API_KEY="your-key-here"
+Copy-Item .env.example .env
+# Edit .env locally and set GOOGLE_MAPS_API_KEY.
 uvicorn delivery_router.api.app:app --reload --port 8002
 ```
 
@@ -98,14 +99,16 @@ The severe-lateness threshold and all three weights are configurable through
 - `examples/` — runnable scenarios using synthetic data
 - `docs/` — product and algorithm decisions
 - `data/fixtures/` — anonymized or synthetic test inputs only
+- `mobile/` — Expo/React Native client, with application code in `mobile/src/`
 
 ## Current limitations
 
 - Exhaustive search is suitable only for small order counts because the number
   of possible sequences grows factorially.
 - Travel times must be supplied as a complete directed matrix.
-- The API has no live map provider, receipt scanner, database, or mobile-app
-  integration. Orders are stored in memory and are cleared on restart.
+- Google mode has no live-traffic weighting. The API has no receipt scanner,
+  database, or mobile-app integration. Orders are stored in memory and are
+  cleared on restart.
 - OR-Tools optimization is deferred until after the exhaustive prototype.
 - Test inputs must be synthetic or fully anonymized; never commit raw customer
   receipts or personal information.
@@ -114,24 +117,9 @@ See `docs/phase-1-product-specification.md` for the V1 product decisions and
 test-data requirements. See `docs/phase-2-routing.md` for the routing
 specification.
 
+## Mobile app (Phase 4)
 
-
-
-1. The driver starts with one or more delivery orders and needs help choosing the delivery sequence.
-2. Because each receipt is attached to an order, the driver photographs receipts one at a time.
-3. The app extracts the customer’s delivery address and the relevant order time from each receipt.
-4. After every scan, the app shows the extracted information. The driver confirms or corrects the address and time.
-5. Once all orders are entered and confirmed, the app calculates the recommended delivery sequence.
-6. The driver reviews the route and starts navigation using Apple Maps or Google Maps.
-7. After completing a delivery, the driver marks it delivered. The app then opens navigation to the next customer.
-8. After the final delivery, the app can navigate the driver back to the restaurant.
-
-
-
-- There is only one time on the receipt which is the order placed time.
-- There should a "submit" button tells the app that all receipts are captured
-- I think it should only calculate after each is added since there are times where a driver needs to decide whether or not to take a specific order.
-- "Valid address" should mean that the address matches the receipt and the map provider should also recognize it
-- Driver should be able to but a warning should be given.
-- Returning to the restaurant should be automatic after all orders are completed
-- There should be a setting that the driver can choose for their default
+The Expo/React Native shell is in `mobile/`. It supports the mock receipt
+workflow from capture through an API-backed optimized stop list, including
+camera/location permission prompts and a persisted navigation-app preference.
+See `docs/phase-4-mobile.md` for setup and the manual acceptance walkthrough.

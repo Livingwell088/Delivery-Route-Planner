@@ -48,6 +48,11 @@ class OrderResponse(OrderCreate):
     pass
 
 
+class OrderUpdate(ApiModel):
+    address: Address
+    age_minutes: int = Field(ge=0)
+
+
 class RouteOrder(ApiModel):
     order_id: NonEmptyString
     address: Address
