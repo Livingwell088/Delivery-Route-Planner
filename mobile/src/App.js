@@ -10,6 +10,7 @@ import { ConfirmOrderScreen } from './screens/ConfirmOrderScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
 import { RouteScreen } from './screens/RouteScreen';
+import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
 import { optimizeRoute } from './services/routeApi';
@@ -23,6 +24,7 @@ export default function App() {
   const [navigationApp, setNavigationApp] = useState('google');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [capturedReceipt, setCapturedReceipt] = useState(null);
   const mockIndex = useRef(0);
 
   useEffect(() => {
@@ -41,6 +43,11 @@ export default function App() {
     setDraft(next);
     setError(null);
     setScreen('confirm');
+  };
+
+  const finishReceiptCapture = (image) => {
+    setCapturedReceipt(image);
+    setScreen('home');
   };
 
   const saveDraft = () => {
@@ -111,7 +118,12 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <Header screen={screen} onNavigate={setScreen} orderCount={orders.length} />
-      {screen === 'home' && <HomeScreen onMock={beginMockOrder} />}
+      {screen === 'home' && (
+        <HomeScreen capturedReceipt={capturedReceipt} onMock={beginMockOrder} onScan={() => setScreen('scanner')} />
+      )}
+      {screen === 'scanner' && (
+        <ReceiptScannerScreen onCancel={() => setScreen('home')} onComplete={finishReceiptCapture} />
+      )}
       {screen === 'confirm' && draft && (
         <ConfirmOrderScreen
           draft={draft}
