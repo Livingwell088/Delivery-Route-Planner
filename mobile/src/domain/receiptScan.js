@@ -104,7 +104,7 @@ export function createReceiptScanResult({
     recognizedText: requiredString(recognizedText, 'Recognized text'), imageSize: createImageSize(imageSize),
     blocks: freeze(blocks.map(createOCRTextBlock)), addressCandidates: freeze(addressCandidates.map(createAddressCandidate)),
     timestampCandidates: freeze(timestampCandidates.map(createTimestampCandidate)),
-    selectedAddressCandidateId, selectedTimestampCandidateId, confidence: normalizeConfidence(confidence),
+    selectedAddressCandidateId, selectedTimestampCandidateId, confidence: optionalConfidence(confidence),
   };
   const hasAddress = selectedAddressCandidateId == null || result.addressCandidates.some(({ id }) => id === selectedAddressCandidateId);
   const hasTimestamp = selectedTimestampCandidateId == null || result.timestampCandidates.some(({ id }) => id === selectedTimestampCandidateId);

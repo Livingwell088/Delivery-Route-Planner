@@ -6,7 +6,7 @@ import { AppButton } from '../components/AppButton';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function HomeScreen({ capturedReceipt, onMock, onScan }) {
+export function HomeScreen({ capturedReceipt, receiptScanResult, onMock, onScan }) {
   const [locationStatus, setLocationStatus] = useState('not requested');
   const [testMode, setTestMode] = useState(false);
 
@@ -45,7 +45,11 @@ export function HomeScreen({ capturedReceipt, onMock, onScan }) {
         <Text style={styles.locationButtonText}>Location permission: {locationStatus}</Text>
       </Pressable>
       <Text style={commonStyles.hint}>
-        {capturedReceipt ? 'Receipt image is ready for OCR in the next step.' : 'Test mode remains available without camera access.'}
+        {receiptScanResult
+          ? `${receiptScanResult.blocks.length} text blocks recognized and ready for parsing.`
+          : capturedReceipt
+            ? 'Receipt captured. Retake it or scan again to run OCR.'
+            : 'Test mode remains available without camera access.'}
       </Text>
     </ScrollView>
   );

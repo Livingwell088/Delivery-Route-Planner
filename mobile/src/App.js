@@ -11,6 +11,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
 import { RouteScreen } from './screens/RouteScreen';
 import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
+import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
 import { optimizeRoute } from './services/routeApi';
@@ -25,6 +26,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [capturedReceipt, setCapturedReceipt] = useState(null);
+  const [receiptScanResult, setReceiptScanResult] = useState(null);
   const mockIndex = useRef(0);
 
   useEffect(() => {
@@ -47,6 +49,12 @@ export default function App() {
 
   const finishReceiptCapture = (image) => {
     setCapturedReceipt(image);
+    setReceiptScanResult(null);
+    setScreen('recognizing');
+  };
+
+  const finishReceiptRecognition = (result) => {
+    setReceiptScanResult(result);
     setScreen('home');
   };
 
@@ -119,10 +127,23 @@ export default function App() {
       <StatusBar style="dark" />
       <Header screen={screen} onNavigate={setScreen} orderCount={orders.length} />
       {screen === 'home' && (
-        <HomeScreen capturedReceipt={capturedReceipt} onMock={beginMockOrder} onScan={() => setScreen('scanner')} />
+        <HomeScreen
+          capturedReceipt={capturedReceipt}
+          receiptScanResult={receiptScanResult}
+          onMock={beginMockOrder}
+          onScan={() => setScreen('scanner')}
+        />
       )}
       {screen === 'scanner' && (
         <ReceiptScannerScreen onCancel={() => setScreen('home')} onComplete={finishReceiptCapture} />
+      )}
+      {screen === 'recognizing' && capturedReceipt && (
+        <ReceiptRecognitionScreen
+          image={capturedReceipt}
+          onCancel={() => setScreen('home')}
+          onComplete={finishReceiptRecognition}
+          onRetake={() => setScreen('scanner')}
+        />
       )}
       {screen === 'confirm' && draft && (
         <ConfirmOrderScreen
