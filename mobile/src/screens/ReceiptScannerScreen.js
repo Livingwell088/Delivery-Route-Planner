@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,16 +16,45 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
   const [error, setError] = useState(null);
   const camera = useRef(null);
 
+  const prepareImage = async (image, fallbackMessage) => {
+    setError(null);
+    try {
+      setCapturedImage(await cropReceiptImage(image));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : fallbackMessage);
+    }
+  };
+
   const capture = async () => {
     if (!cameraReady || busy) return;
     setBusy(true);
-    setError(null);
     try {
       const photo = await camera.current?.takePictureAsync({ quality: 1 });
       if (!photo) throw new Error('The camera did not return a photo.');
-      setCapturedImage(await cropReceiptImage(photo));
+      await prepareImage(photo, 'Unable to capture this receipt.');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to capture this receipt.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chooseTestImage = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const selection = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 1,
+        selectionLimit: 1,
+      });
+      if (!selection.canceled) {
+        await prepareImage(selection.assets[0], 'Unable to prepare this receipt image.');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to open the image library.');
     } finally {
       setBusy(false);
     }
@@ -46,6 +76,7 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
         <Text style={commonStyles.title}>Camera access needed</Text>
         <Text style={commonStyles.subtitle}>RouteRunner needs camera access to photograph receipts.</Text>
         <AppButton label="Allow camera" onPress={requestPermission} />
+        {__DEV__ && <AppButton label="Choose test image" onPress={chooseTestImage} secondary />}
         <AppButton label="Cancel" onPress={onCancel} secondary />
       </View>
     );
@@ -87,6 +118,16 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
       </View>
       <View style={styles.bottomBar}>
         {error && <Text style={styles.error}>{error}</Text>}
+        {__DEV__ && (
+          <Pressable
+            accessibilityLabel="Choose a receipt image for testing"
+            disabled={busy}
+            onPress={chooseTestImage}
+            style={[styles.importButton, busy && styles.disabled]}
+          >
+            <Text style={styles.importButtonText}>Choose test image</Text>
+          </Pressable>
+        )}
         <Text style={styles.cameraHint}>Keep the receipt flat and avoid glare.</Text>
         <Pressable
           accessibilityLabel="Capture receipt"
@@ -120,6 +161,8 @@ const styles = StyleSheet.create({
   bottomBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 16, paddingBottom: 28, alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,0,0,0.68)' },
   cameraHint: { color: '#FFFFFF', fontSize: 14 },
   error: { color: '#FFD0C8', fontWeight: '700', paddingHorizontal: 20, textAlign: 'center' },
+  importButton: { paddingHorizontal: 18, paddingVertical: 9, borderWidth: 1, borderColor: colors.gold, borderRadius: 20 },
+  importButtonText: { color: '#FFFFFF', fontWeight: '800' },
   shutter: { width: 72, height: 72, borderRadius: 36, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   shutterInner: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.gold },
   disabled: { opacity: 0.5 },
