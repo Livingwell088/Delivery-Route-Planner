@@ -1,6 +1,7 @@
 {
   "name": "route-runner-mobile",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "dependencies": {
     "@infinitered/react-native-mlkit-text-recognition": "^5.0.1",
@@ -19,6 +20,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "test": "node --test",
     "web": "expo start --web"
   },
   "private": true

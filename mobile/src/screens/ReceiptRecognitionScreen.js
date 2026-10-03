@@ -61,6 +61,23 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
       <View style={styles.textCard}>
         <Text selectable style={styles.recognizedText}>{result.recognizedText}</Text>
       </View>
+      <Text style={commonStyles.eyebrow}>ADDRESS CANDIDATES</Text>
+      {result.addressCandidates.length ? result.addressCandidates.map((candidate, index) => (
+        <View key={candidate.id} style={styles.candidateCard}>
+          <Text style={commonStyles.cardTitle}>
+            {index === 0 ? 'Best match' : `Alternative ${index}`}
+          </Text>
+          <Text selectable style={styles.recognizedText}>
+            {candidate.streetAddress}{'\n'}
+            {candidate.city}, {candidate.state} {candidate.postalCode}
+          </Text>
+          <Text style={commonStyles.muted}>
+            {Math.round(candidate.confidence.value * 100)}% confidence
+          </Text>
+        </View>
+      )) : (
+        <Text style={commonStyles.muted}>No complete address candidate was found.</Text>
+      )}
       <AppButton label="Continue" onPress={() => onComplete(result)} />
       <AppButton label="Retake" onPress={onRetake} secondary />
     </ScrollView>
@@ -74,5 +91,6 @@ const styles = StyleSheet.create({
   error: { color: colors.errorText, lineHeight: 21, textAlign: 'center' },
   actions: { alignSelf: 'stretch', gap: 10 },
   textCard: { padding: 18, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  candidateCard: { padding: 18, gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   recognizedText: { color: colors.ink, fontSize: 15, lineHeight: 22 },
 });
