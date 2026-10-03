@@ -7,6 +7,7 @@ import {
   createReceiptScanResult,
 } from '../domain/receiptScan';
 import { extractAddressCandidates } from './receiptAddressParser';
+import { extractTimestampCandidates } from './receiptTimestampParser';
 
 function frameToBoundingBox(frame) {
   if (!frame) return { x: 0, y: 0, width: 0, height: 0 };
@@ -37,13 +38,16 @@ export function mapMLKitResult(ocrResult, imageSize) {
     })),
   }));
   const addressCandidates = extractAddressCandidates(blocks, imageSize);
+  const timestampCandidates = extractTimestampCandidates(blocks);
 
   return createReceiptScanResult({
     recognizedText: ocrResult.text,
     imageSize,
     blocks,
     addressCandidates,
+    timestampCandidates,
     selectedAddressCandidateId: addressCandidates[0]?.id ?? null,
+    selectedTimestampCandidateId: timestampCandidates[0]?.id ?? null,
     confidence: null,
   });
 }

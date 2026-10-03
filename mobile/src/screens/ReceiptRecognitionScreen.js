@@ -78,6 +78,22 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
       )) : (
         <Text style={commonStyles.muted}>No complete address candidate was found.</Text>
       )}
+      <Text style={commonStyles.eyebrow}>ORDER TIME CANDIDATES</Text>
+      {result.timestampCandidates.length ? result.timestampCandidates.map((candidate, index) => (
+        <View key={candidate.id} style={styles.candidateCard}>
+          <Text style={commonStyles.cardTitle}>
+            {index === 0 ? 'Best match' : `Alternative ${index}`}
+          </Text>
+          <Text selectable style={styles.recognizedText}>
+            {candidate.rawDate} at {candidate.rawTime}
+          </Text>
+          <Text style={commonStyles.muted}>
+            {Math.round(candidate.confidence.value * 100)}% confidence
+          </Text>
+        </View>
+      )) : (
+        <Text style={commonStyles.muted}>No complete order timestamp was found.</Text>
+      )}
       <AppButton label="Continue" onPress={() => onComplete(result)} />
       <AppButton label="Retake" onPress={onRetake} secondary />
     </ScrollView>
