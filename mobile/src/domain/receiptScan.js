@@ -35,7 +35,7 @@ export function createConfidence(value, evidence = []) {
   if (!Array.isArray(evidence) || evidence.some((item) => typeof item !== 'string')) {
     throw new TypeError('Confidence evidence must be an array of strings.');
   }
-  const level = value >= 0.8 ? CONFIDENCE_LEVEL.HIGH : value >= 0.5 ? CONFIDENCE_LEVEL.MEDIUM : CONFIDENCE_LEVEL.LOW;
+  const level = value >= 0.9 ? CONFIDENCE_LEVEL.HIGH : value >= 0.7 ? CONFIDENCE_LEVEL.MEDIUM : CONFIDENCE_LEVEL.LOW;
   return freeze({ value, level, evidence: freeze([...evidence]) });
 }
 

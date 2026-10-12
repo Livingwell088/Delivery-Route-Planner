@@ -14,8 +14,8 @@ import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
-import { createReceiptFingerprint } from './services/receiptDuplicate';
-import { createOrderDraftFromReceipt } from './services/receiptOrderDraft';
+import { createReceiptFingerprint, createDraftReceiptFingerprint } from './services/receiptDuplicate';
+import { createOrderDraftFromReceipt, createManualReceiptDraft, validateReceiptDraft } from './services/receiptOrderDraft';
 import { optimizeRoute } from './services/routeApi';
 import { colors } from './theme/colors';
 
@@ -57,26 +57,30 @@ export default function App() {
   };
 
   const finishReceiptRecognition = (result) => {
-    const fingerprint = createReceiptFingerprint(result);
-    if (fingerprint) {
-      setAcceptedReceiptFingerprints((current) => [...current, fingerprint]);
-    }
     setReceiptScanResult(result);
-    setDraft(createOrderDraftFromReceipt(result, `OCR-${Date.now().toString().slice(-6)}`));
+    setDraft(createOrderDraftFromReceipt(result, `OCR-${Date.now().toString().slice(-6)}`, { allowCorrection: true }));
     setError(null);
     setScreen('confirm');
   };
 
   const saveDraft = () => {
-    const missingRequiredField = !draft?.order_id.trim() || !draft.address.formatted_address.trim();
-    const invalidPlacedTime = Number.isNaN(new Date(draft?.placedAt).getTime());
-    if (missingRequiredField || invalidPlacedTime) {
-      setError('Enter an order number, address, and valid placed time.');
+    const validationError = validateReceiptDraft(draft);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     if (orders.some((order) => order.order_id === draft.order_id)) {
       setError(`Order #${draft.order_id} is already in the list.`);
       return;
+    }
+    if (draft.source === 'receipt-ocr') {
+      const fingerprint = createDraftReceiptFingerprint(draft);
+      if (fingerprint && acceptedReceiptFingerprints.includes(fingerprint)) {
+        setError('This destination and order time were already added.');
+        return;
+      }
+      const originalFingerprint = createReceiptFingerprint(receiptScanResult);
+      setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
     }
     setOrders((current) => [...current, draft]);
     setDraft(null);
@@ -152,6 +156,12 @@ export default function App() {
           acceptedReceiptFingerprints={acceptedReceiptFingerprints}
           onCancel={() => setScreen('home')}
           onComplete={finishReceiptRecognition}
+          onManual={() => {
+            setReceiptScanResult(null);
+            setDraft(createManualReceiptDraft(`OCR-${Date.now().toString().slice(-6)}`));
+            setError(null);
+            setScreen('confirm');
+          }}
           onRetake={() => setScreen('scanner')}
         />
       )}
@@ -160,6 +170,8 @@ export default function App() {
           draft={draft}
           onChange={setDraft}
           onSave={saveDraft}
+          onCancel={() => { setDraft(null); setError(null); setScreen('home'); }}
+          onRetake={() => { setDraft(null); setError(null); setScreen('scanner'); }}
           error={error}
         />
       )}

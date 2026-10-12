@@ -4,7 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, Vibration, View } from
 import { AppButton } from '../components/AppButton';
 import { RECEIPT_SCAN_STATUS } from '../domain/receiptScan';
 import { recognizeReceipt } from '../services/receiptOcr';
-import { isReceiptScanUsable } from '../services/receiptConfidence';
+import { assessReceiptScan, RECEIPT_ACTION } from '../services/receiptConfidence';
 import { isDuplicateReceipt } from '../services/receiptDuplicate';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
@@ -15,11 +15,16 @@ export function ReceiptRecognitionScreen({
   onCancel,
   onComplete,
   onRetake,
+  onManual,
 }) {
   const [status, setStatus] = useState(RECEIPT_SCAN_STATUS.PROCESSING);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const signaledResult = useRef(null);
+  const selectCandidate = (field, id) => setResult((current) => {
+    const next = { ...current, [field]: id };
+    return { ...next, confidence: assessReceiptScan(next).confidence };
+  });
 
   useEffect(() => {
     let active = true;
@@ -42,7 +47,7 @@ export function ReceiptRecognitionScreen({
       status !== RECEIPT_SCAN_STATUS.SUCCEEDED
       || !result
       || signaledResult.current === result
-      || !isReceiptScanUsable(result)
+      || assessReceiptScan(result).action !== RECEIPT_ACTION.ACCEPT
       || isDuplicateReceipt(result, acceptedReceiptFingerprints)
     ) return;
 
@@ -67,6 +72,7 @@ export function ReceiptRecognitionScreen({
         <Text style={styles.error}>{error?.message ?? 'Receipt text recognition failed.'}</Text>
         <View style={styles.actions}>
           <AppButton label="Retake" onPress={onRetake} />
+          <AppButton label="Enter manually" onPress={onManual} secondary />
           <AppButton label="Cancel" onPress={onCancel} secondary />
         </View>
       </View>
@@ -74,7 +80,8 @@ export function ReceiptRecognitionScreen({
   }
 
   const duplicate = isDuplicateReceipt(result, acceptedReceiptFingerprints);
-  const usable = isReceiptScanUsable(result) && !duplicate;
+  const assessment = assessReceiptScan(result);
+  const usable = assessment.action !== RECEIPT_ACTION.CORRECT && !duplicate;
 
   return (
     <ScrollView contentContainerStyle={styles.content}>
@@ -88,13 +95,17 @@ export function ReceiptRecognitionScreen({
       </View>
       <View style={styles.confidenceCard}>
         <Text style={commonStyles.cardTitle}>
-          {duplicate ? 'Duplicate receipt' : usable ? 'Receipt is ready' : 'Receipt needs review'}
+          {duplicate ? 'Duplicate receipt' : assessment.action === RECEIPT_ACTION.ACCEPT
+            ? 'Receipt is ready' : usable ? 'Driver confirmation required' : 'Correction or rescan required'}
         </Text>
         <Text style={commonStyles.muted}>
           {duplicate
             ? 'This address and order time were already accepted.'
-            : `Overall confidence: ${Math.round(result.confidence.value * 100)}%`}
+            : `Overall confidence: ${(Math.floor(assessment.confidence.value * 1000) / 10).toFixed(1)}%`}
         </Text>
+        {!duplicate && assessment.reasons.map((reason) => (
+          <Text key={reason} style={commonStyles.muted}>{reason}</Text>
+        ))}
       </View>
       <Text style={commonStyles.eyebrow}>ADDRESS CANDIDATES</Text>
       {result.addressCandidates.length ? result.addressCandidates.map((candidate, index) => (
@@ -109,6 +120,9 @@ export function ReceiptRecognitionScreen({
           <Text style={commonStyles.muted}>
             {Math.round(candidate.confidence.value * 100)}% confidence
           </Text>
+          <AppButton label={result.selectedAddressCandidateId === candidate.id ? 'Selected address' : 'Select address'}
+            disabled={result.selectedAddressCandidateId === candidate.id} secondary
+            onPress={() => selectCandidate('selectedAddressCandidateId', candidate.id)} />
         </View>
       )) : (
         <Text style={commonStyles.muted}>No complete address candidate was found.</Text>
@@ -125,16 +139,22 @@ export function ReceiptRecognitionScreen({
           <Text style={commonStyles.muted}>
             {Math.round(candidate.confidence.value * 100)}% confidence
           </Text>
+          <AppButton label={result.selectedTimestampCandidateId === candidate.id ? 'Selected time' : 'Select time'}
+            disabled={result.selectedTimestampCandidateId === candidate.id} secondary
+            onPress={() => selectCandidate('selectedTimestampCandidateId', candidate.id)} />
         </View>
       )) : (
         <Text style={commonStyles.muted}>No complete order timestamp was found.</Text>
       )}
       <AppButton
-        label={duplicate ? 'Receipt already added' : usable ? 'Continue' : 'Required information missing'}
-        onPress={() => onComplete(result)}
+        label={duplicate ? 'Receipt already added' : usable
+          ? assessment.action === RECEIPT_ACTION.CONFIRM ? 'Review and confirm' : 'Continue' : 'Rescan required'}
+        onPress={() => { if (usable) onComplete(result); }}
         disabled={!usable}
       />
+      <AppButton label="Correct receipt details" onPress={() => onComplete(result)} secondary />
       <AppButton label="Retake" onPress={onRetake} secondary />
+      <AppButton label="Cancel" onPress={onCancel} secondary />
     </ScrollView>
   );
 }
