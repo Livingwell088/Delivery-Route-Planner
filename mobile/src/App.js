@@ -14,6 +14,7 @@ import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
+import { createReceiptFingerprint } from './services/receiptDuplicate';
 import { optimizeRoute } from './services/routeApi';
 import { colors } from './theme/colors';
 
@@ -27,6 +28,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [capturedReceipt, setCapturedReceipt] = useState(null);
   const [receiptScanResult, setReceiptScanResult] = useState(null);
+  const [acceptedReceiptFingerprints, setAcceptedReceiptFingerprints] = useState([]);
   const mockIndex = useRef(0);
 
   useEffect(() => {
@@ -54,6 +56,10 @@ export default function App() {
   };
 
   const finishReceiptRecognition = (result) => {
+    const fingerprint = createReceiptFingerprint(result);
+    if (fingerprint) {
+      setAcceptedReceiptFingerprints((current) => [...current, fingerprint]);
+    }
     setReceiptScanResult(result);
     setScreen('home');
   };
@@ -140,6 +146,7 @@ export default function App() {
       {screen === 'recognizing' && capturedReceipt && (
         <ReceiptRecognitionScreen
           image={capturedReceipt}
+          acceptedReceiptFingerprints={acceptedReceiptFingerprints}
           onCancel={() => setScreen('home')}
           onComplete={finishReceiptRecognition}
           onRetake={() => setScreen('scanner')}

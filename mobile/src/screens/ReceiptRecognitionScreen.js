@@ -5,10 +5,17 @@ import { AppButton } from '../components/AppButton';
 import { RECEIPT_SCAN_STATUS } from '../domain/receiptScan';
 import { recognizeReceipt } from '../services/receiptOcr';
 import { isReceiptScanUsable } from '../services/receiptConfidence';
+import { isDuplicateReceipt } from '../services/receiptDuplicate';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake }) {
+export function ReceiptRecognitionScreen({
+  image,
+  acceptedReceiptFingerprints = [],
+  onCancel,
+  onComplete,
+  onRetake,
+}) {
   const [status, setStatus] = useState(RECEIPT_SCAN_STATUS.PROCESSING);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -52,6 +59,9 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
     );
   }
 
+  const duplicate = isDuplicateReceipt(result, acceptedReceiptFingerprints);
+  const usable = isReceiptScanUsable(result) && !duplicate;
+
   return (
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={commonStyles.eyebrow}>OCR RESULT</Text>
@@ -64,10 +74,12 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
       </View>
       <View style={styles.confidenceCard}>
         <Text style={commonStyles.cardTitle}>
-          {isReceiptScanUsable(result) ? 'Receipt is ready' : 'Receipt needs review'}
+          {duplicate ? 'Duplicate receipt' : usable ? 'Receipt is ready' : 'Receipt needs review'}
         </Text>
         <Text style={commonStyles.muted}>
-          Overall confidence: {Math.round(result.confidence.value * 100)}%
+          {duplicate
+            ? 'This address and order time were already accepted.'
+            : `Overall confidence: ${Math.round(result.confidence.value * 100)}%`}
         </Text>
       </View>
       <Text style={commonStyles.eyebrow}>ADDRESS CANDIDATES</Text>
@@ -104,9 +116,9 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
         <Text style={commonStyles.muted}>No complete order timestamp was found.</Text>
       )}
       <AppButton
-        label={isReceiptScanUsable(result) ? 'Continue' : 'Required information missing'}
+        label={duplicate ? 'Receipt already added' : usable ? 'Continue' : 'Required information missing'}
         onPress={() => onComplete(result)}
-        disabled={!isReceiptScanUsable(result)}
+        disabled={!usable}
       />
       <AppButton label="Retake" onPress={onRetake} secondary />
     </ScrollView>
