@@ -15,6 +15,7 @@ import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
 import { createReceiptFingerprint } from './services/receiptDuplicate';
+import { createOrderDraftFromReceipt } from './services/receiptOrderDraft';
 import { optimizeRoute } from './services/routeApi';
 import { colors } from './theme/colors';
 
@@ -61,7 +62,9 @@ export default function App() {
       setAcceptedReceiptFingerprints((current) => [...current, fingerprint]);
     }
     setReceiptScanResult(result);
-    setScreen('home');
+    setDraft(createOrderDraftFromReceipt(result, `OCR-${Date.now().toString().slice(-6)}`));
+    setError(null);
+    setScreen('confirm');
   };
 
   const saveDraft = () => {

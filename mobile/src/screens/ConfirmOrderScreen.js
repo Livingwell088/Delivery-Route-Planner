@@ -7,6 +7,7 @@ import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
 export function ConfirmOrderScreen({ draft, onChange, onSave, error }) {
+  const isOcrDraft = draft.source === 'receipt-ocr';
   const update = (field, value) => {
     if (field === 'address') {
       onChange({ ...draft, address: { ...draft.address, formatted_address: value } });
@@ -17,7 +18,7 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error }) {
 
   return (
     <ScrollView contentContainerStyle={commonStyles.content} keyboardShouldPersistTaps="handled">
-      <Text style={commonStyles.eyebrow}>MOCK EXTRACTION COMPLETE</Text>
+      <Text style={commonStyles.eyebrow}>{isOcrDraft ? 'RECEIPT OCR COMPLETE' : 'MOCK EXTRACTION COMPLETE'}</Text>
       <Text style={commonStyles.title}>Confirm order</Text>
       <Text style={commonStyles.subtitle}>
         Compare every value with the physical receipt before adding it.
@@ -40,7 +41,7 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error }) {
       />
       <View style={styles.successBox}>
         <Text style={styles.successText}>
-          ✓ Mock address recognized. Driver confirmation is still required.
+          ✓ {isOcrDraft ? 'Receipt address and order time recognized.' : 'Mock address recognized.'} Driver confirmation is still required.
         </Text>
       </View>
       {error && <ErrorMessage message={error} />}

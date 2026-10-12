@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, Vibration, View } from 'react-native';
 
 import { AppButton } from '../components/AppButton';
 import { RECEIPT_SCAN_STATUS } from '../domain/receiptScan';
@@ -19,6 +19,7 @@ export function ReceiptRecognitionScreen({
   const [status, setStatus] = useState(RECEIPT_SCAN_STATUS.PROCESSING);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const signaledResult = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -35,6 +36,19 @@ export function ReceiptRecognitionScreen({
       });
     return () => { active = false; };
   }, [image]);
+
+  useEffect(() => {
+    if (
+      status !== RECEIPT_SCAN_STATUS.SUCCEEDED
+      || !result
+      || signaledResult.current === result
+      || !isReceiptScanUsable(result)
+      || isDuplicateReceipt(result, acceptedReceiptFingerprints)
+    ) return;
+
+    signaledResult.current = result;
+    Vibration.vibrate(100);
+  }, [acceptedReceiptFingerprints, result, status]);
 
   if (status === RECEIPT_SCAN_STATUS.PROCESSING) {
     return (

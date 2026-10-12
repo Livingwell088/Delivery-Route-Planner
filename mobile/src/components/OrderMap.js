@@ -6,6 +6,7 @@ import { DEFAULT_RESTAURANT } from '../data/mockReceipts';
 import { colors } from '../theme/colors';
 
 const MAP_PADDING = { top: 45, right: 45, bottom: 45, left: 45 };
+const MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 function getInitialRegion(coordinates) {
   const latitudes = coordinates.map((coordinate) => coordinate.latitude);
@@ -27,12 +28,16 @@ export function OrderMap({ orders, showRoute = false }) {
   const map = useRef(null);
   const [mapReady, setMapReady] = useState(false);
   const coordinates = useMemo(
-    () => [DEFAULT_RESTAURANT.coordinates, ...orders.map((order) => order.address.coordinates)],
+    () => [DEFAULT_RESTAURANT.coordinates, ...orders.map((order) => order.address.coordinates).filter(Boolean)],
     [orders],
   );
   const routeCoordinates = useMemo(
     () => [...coordinates, DEFAULT_RESTAURANT.coordinates],
     [coordinates],
+  );
+  const mappedOrders = useMemo(
+    () => orders.filter((order) => order.address.coordinates),
+    [orders],
   );
 
   useEffect(() => {
@@ -43,6 +48,17 @@ export function OrderMap({ orders, showRoute = false }) {
       });
     }
   }, [coordinates, mapReady]);
+
+  if (!MAPS_API_KEY) {
+    return (
+      <View style={[styles.container, styles.unavailable]}>
+        <Text style={styles.unavailableTitle}>Map preview unavailable</Text>
+        <Text style={styles.unavailableText}>
+          Add an Android Google Maps API key and rebuild to enable map previews.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -69,7 +85,7 @@ export function OrderMap({ orders, showRoute = false }) {
             <Text style={styles.restaurantMarkerText}>R</Text>
           </View>
         </Marker>
-        {orders.map((order, index) => (
+        {mappedOrders.map((order, index) => (
           <Marker
             key={order.order_id}
             coordinate={order.address.coordinates}
@@ -108,6 +124,22 @@ const styles = StyleSheet.create({
   map: {
     width: '100%',
     height: '100%',
+  },
+  unavailable: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 8,
+  },
+  unavailableTitle: {
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  unavailableText: {
+    color: colors.muted,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   marker: {
     width: 34,
