@@ -7,6 +7,7 @@ import {
   createReceiptScanResult,
 } from '../domain/receiptScan';
 import { extractAddressCandidates } from './receiptAddressParser';
+import { calculateReceiptConfidence } from './receiptConfidence';
 import { extractTimestampCandidates } from './receiptTimestampParser';
 
 function frameToBoundingBox(frame) {
@@ -39,6 +40,7 @@ export function mapMLKitResult(ocrResult, imageSize) {
   }));
   const addressCandidates = extractAddressCandidates(blocks, imageSize);
   const timestampCandidates = extractTimestampCandidates(blocks);
+  const confidence = calculateReceiptConfidence({ addressCandidates, timestampCandidates });
 
   return createReceiptScanResult({
     recognizedText: ocrResult.text,
@@ -48,7 +50,7 @@ export function mapMLKitResult(ocrResult, imageSize) {
     timestampCandidates,
     selectedAddressCandidateId: addressCandidates[0]?.id ?? null,
     selectedTimestampCandidateId: timestampCandidates[0]?.id ?? null,
-    confidence: null,
+    confidence,
   });
 }
 

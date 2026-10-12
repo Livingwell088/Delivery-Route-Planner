@@ -4,6 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { AppButton } from '../components/AppButton';
 import { RECEIPT_SCAN_STATUS } from '../domain/receiptScan';
 import { recognizeReceipt } from '../services/receiptOcr';
+import { isReceiptScanUsable } from '../services/receiptConfidence';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
@@ -61,6 +62,14 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
       <View style={styles.textCard}>
         <Text selectable style={styles.recognizedText}>{result.recognizedText}</Text>
       </View>
+      <View style={styles.confidenceCard}>
+        <Text style={commonStyles.cardTitle}>
+          {isReceiptScanUsable(result) ? 'Receipt is ready' : 'Receipt needs review'}
+        </Text>
+        <Text style={commonStyles.muted}>
+          Overall confidence: {Math.round(result.confidence.value * 100)}%
+        </Text>
+      </View>
       <Text style={commonStyles.eyebrow}>ADDRESS CANDIDATES</Text>
       {result.addressCandidates.length ? result.addressCandidates.map((candidate, index) => (
         <View key={candidate.id} style={styles.candidateCard}>
@@ -94,7 +103,11 @@ export function ReceiptRecognitionScreen({ image, onCancel, onComplete, onRetake
       )) : (
         <Text style={commonStyles.muted}>No complete order timestamp was found.</Text>
       )}
-      <AppButton label="Continue" onPress={() => onComplete(result)} />
+      <AppButton
+        label={isReceiptScanUsable(result) ? 'Continue' : 'Required information missing'}
+        onPress={() => onComplete(result)}
+        disabled={!isReceiptScanUsable(result)}
+      />
       <AppButton label="Retake" onPress={onRetake} secondary />
     </ScrollView>
   );
@@ -108,5 +121,6 @@ const styles = StyleSheet.create({
   actions: { alignSelf: 'stretch', gap: 10 },
   textCard: { padding: 18, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   candidateCard: { padding: 18, gap: 8, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  confidenceCard: { padding: 18, gap: 8, borderRadius: 16, backgroundColor: colors.card },
   recognizedText: { color: colors.ink, fontSize: 15, lineHeight: 22 },
 });
