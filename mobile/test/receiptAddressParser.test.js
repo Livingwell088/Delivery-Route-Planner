@@ -85,3 +85,64 @@ test('ignores menu lines and phone numbers', () => {
 
   assert.deepEqual(candidates, []);
 });
+
+test('preserves separate suite and room lines with their source evidence', () => {
+  for (const unit of ['SUITE 200', 'ROOM 206']) {
+    const [candidate] = extractAddressCandidates([
+      block('street', '455 MAIN ST', 700),
+      block('unit', unit, 760),
+      block('region', 'WORCESTER, MA 01608', 820),
+    ], imageSize);
+    assert.equal(candidate.streetAddress, `455 Main St ${unit === 'SUITE 200' ? 'Suite 200' : 'Room 206'}`);
+    assert.deepEqual(candidate.sourceLineIds, ['street-line', 'unit-line', 'region-line']);
+  }
+});
+
+test('supports Square and ZIP+4 without losing leading ZIP zeros', () => {
+  const [candidate] = extractAddressCandidates([
+    block('street', '2 WASHINGTON SQUARE', 700),
+    block('region', 'WORCESTER, MA 01604-1234', 760),
+  ], imageSize);
+  assert.equal(candidate.streetAddress, '2 Washington Square');
+  assert.equal(candidate.postalCode, '01604-1234');
+});
+
+test('does not combine a street with a distant or separate-column region', () => {
+  for (const [x, y] of [[500, 760], [50, 1200]]) {
+    const original = block('region', 'WORCESTER, MA 01608', y);
+    const region = { ...original, lines: [{ ...original.lines[0], boundingBox: { x, y, width: 400, height: 50 } }] };
+    assert.deepEqual(extractAddressCandidates([block('street', '455 MAIN ST', 700), region], imageSize), []);
+  }
+});
+
+test('shuffling and uniformly scaling OCR geometry preserves the address', () => {
+  const input = [block('street', '311 MAIN ST', 700), block('unit', 'SUITE 200', 760),
+    block('region', 'WORCESTER, MA 01608', 820)];
+  const expected = extractAddressCandidates(input, imageSize);
+  const scaled = input.slice().reverse().map((item) => ({ ...item,
+    lines: item.lines.map((line) => ({ ...line, boundingBox: Object.fromEntries(
+      Object.entries(line.boundingBox).map(([key, value]) => [key, value * 2])) })) }));
+  assert.deepEqual(extractAddressCandidates(scaled, { width: 2000, height: 4000 }), expected);
+});
+
+test('missing ZIP never borrows a later address ZIP', () => {
+  const candidates = extractAddressCandidates([
+    block('missing-street', '455 MAIN ST', 700), block('missing-region', 'WORCESTER, MA', 760),
+    block('other-street', '799 MAIN ST', 820), block('other-region', 'WORCESTER, MA 01610', 880),
+  ], imageSize);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].streetAddress, '799 Main St');
+});
+
+test('block-only text uses conservative geometry-free fallback within its own block', () => {
+  const input = [{ id: 'fallback', text: 'Delivery\n455 MAIN ST\nROOM 206\nWORCESTER, MA 01608',
+    boundingBox: { x: 50, y: 700, width: 850, height: 200 }, lines: [] }];
+  const [candidate] = extractAddressCandidates(input, imageSize);
+  assert.equal(candidate.streetAddress, '455 Main St Room 206');
+  assert.ok(candidate.confidence.value < 0.9);
+  assert.ok(candidate.confidence.evidence.includes('OCR line geometry unavailable'));
+  assert.deepEqual(extractAddressCandidates([
+    { ...input[0], text: '455 MAIN ST' },
+    { ...input[0], id: 'unrelated', text: 'WORCESTER, MA 01608' },
+  ], imageSize), []);
+});

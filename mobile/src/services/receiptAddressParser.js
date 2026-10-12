@@ -1,9 +1,10 @@
+import { receiptLines, relatedFollowingLine, hasLineGeometry } from './receiptLines.js';
 import { createAddressCandidate } from '../domain/receiptScan.js';
 
-const STREET_PATTERN = /^(\d{1,6}(?:[/-]\d{1,6})?[A-Z]?)\s+(.+?\b(?:ST(?:REET)?|AVE(?:NUE)?|RD|ROAD|DR(?:IVE)?|LN|LANE|BLVD|BOULEVARD|CT|COURT|CIR(?:CLE)?|HWY|HIGHWAY|PKWY|PARKWAY|PL(?:ACE)?|TER(?:RACE)?|WAY))\b(?:[,.]?\s*(.*))?$/i;
+const STREET_PATTERN = /^(\d{1,6}(?:[/-]\d{1,6})?[A-Z]?)\s+(.+?\b(?:ST(?:REET)?|AVE(?:NUE)?|RD|ROAD|DR(?:IVE)?|LN|LANE|BLVD|BOULEVARD|CT|COURT|CIR(?:CLE)?|HWY|HIGHWAY|PKWY|PARKWAY|PL(?:ACE)?|TER(?:RACE)?|WAY|SQ(?:UARE)?))\b(?:[,.]?\s*(.*))?$/i;
 const CITY_STATE_ZIP_PATTERN = /^([A-Z][A-Z .'-]*?)[,\s]+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i;
 const CITY_ZIP_PATTERN = /^([A-Z][A-Z .'-]*?)[,\s]+(\d{5}(?:-\d{4})?)$/i;
-const UNIT_PATTERN = /^(#\s*[A-Z0-9-]+|(?:APT|APARTMENT|UNIT|STE|SUITE)\s*#?\s*[A-Z0-9-]+|(?:\d+(?:ST|ND|RD|TH)?\s*FL(?:OOR)?|FL(?:OOR)?\s*\d+))\b(?:[,\s]+(.*))?$/i;
+const UNIT_PATTERN = /^(#\s*[A-Z0-9-]+|(?:APT|APARTMENT|UNIT|STE|SUITE|RM|ROOM)\s*#?\s*[A-Z0-9-]+|(?:\d+(?:ST|ND|RD|TH)?\s*FL(?:OOR)?|FL(?:OOR)?\s*\d+))\b(?:[,\s]+(.*))?$/i;
 const DELIVERY_LABEL_PATTERN = /\b(?:deliver(?:y|ing)|ship(?:ping)?|customer)\b/i;
 const PHONE_PATTERN = /(?:tel|phone)|(?:\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})/i;
 
@@ -68,31 +69,14 @@ function regionFromText(text) {
   } : null;
 }
 
-function receiptLines(blocks) {
-  const lines = blocks.flatMap((block) => (
-    block.lines.length
-      ? block.lines
-      : block.text.split(/\r?\n/).filter((text) => text.trim()).map((text, index) => ({
-        id: `${block.id}-derived-${index}`,
-        text,
-        boundingBox: block.boundingBox,
-      }))
-  ));
-
-  return lines
-    .map((line) => ({ ...line, cleanedText: cleanText(line.text) }))
-    .filter((line) => line.cleanedText)
-    .sort((left, right) => {
-      const verticalDifference = left.boundingBox.y - right.boundingBox.y;
-      return Math.abs(verticalDifference) > 4
-        ? verticalDifference
-        : left.boundingBox.x - right.boundingBox.x;
-    });
-}
 
 function candidateScore({ lineIndex, streetLine, regionLine, region, lines, imageSize }) {
   const evidence = ['street number and suffix detected', 'city and ZIP detected'];
   let score = 0.58;
+  if (!hasLineGeometry(streetLine) || !hasLineGeometry(regionLine)) {
+    score -= 0.2;
+    evidence.push('OCR line geometry unavailable');
+  }
 
   if (region.inferredState) {
     score += 0.04;
@@ -150,28 +134,40 @@ export function extractAddressCandidates(blocks, imageSize) {
     const trailingText = cleanText(streetMatch[3] ?? '');
     let region = trailingText ? regionFromText(trailingText) : null;
     const unitMatch = !region && trailingText ? trailingText.match(UNIT_PATTERN) : null;
-    const unit = unitMatch?.[1] ? normalizeUnit(unitMatch[1]) : '';
+    let unit = unitMatch?.[1] ? normalizeUnit(unitMatch[1]) : '';
     if (unitMatch?.[2]) region = regionFromText(unitMatch[2]);
-    const streetAddress = `${normalizeStreet(`${streetMatch[1]} ${streetMatch[2]}`)}${unit ? ` ${unit}` : ''}`;
+    let streetAddress = `${normalizeStreet(`${streetMatch[1]} ${streetMatch[2]}`)}${unit ? ` ${unit}` : ''}`;
     let regionLine = streetLine;
 
+    const sourceLineIds = [streetLine.id];
     if (!region) {
-      const nearbyRegion = lines
-        .slice(lineIndex + 1, lineIndex + 3)
-        .map((line) => ({ line, region: regionFromText(line.cleanedText) }))
-        .find(({ region: match }) => match);
-      if (!nearbyRegion) return;
-      region = nearbyRegion.region;
-      regionLine = nearbyRegion.line;
+      const nearby = lines.slice(lineIndex + 1).filter((line) =>
+        relatedFollowingLine(streetLine, line));
+      // A ZIP-anchored region must follow the street in the same column.
+      // Stop at another street or unrelated text rather than borrowing its ZIP.
+      for (const line of nearby.slice(0, 2)) {
+        const separateUnit = line.cleanedText.match(UNIT_PATTERN);
+        if (separateUnit && !unit) {
+          unit = normalizeUnit(separateUnit[1]);
+          sourceLineIds.push(line.id);
+          if (separateUnit[2]) region = regionFromText(separateUnit[2]);
+          if (region) { regionLine = line; break; }
+          continue;
+        }
+        region = regionFromText(line.cleanedText);
+        if (region) regionLine = line;
+        break;
+      }
+      if (!region) return;
+      streetAddress = `${normalizeStreet(`${streetMatch[1]} ${streetMatch[2]}`)}${unit ? ` ${unit}` : ''}`;
     }
-
     const candidate = {
       id: `address-${lineIndex}`,
       streetAddress,
       city: region.city,
       state: region.state,
       postalCode: region.postalCode,
-      sourceLineIds: [...new Set([streetLine.id, regionLine.id])],
+      sourceLineIds: [...new Set([...sourceLineIds, regionLine.id])],
       confidence: candidateScore({ lineIndex, streetLine, regionLine, region, lines, imageSize }),
     };
     const key = candidateKey(candidate);

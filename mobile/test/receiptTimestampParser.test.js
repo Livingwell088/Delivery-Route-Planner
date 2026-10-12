@@ -62,3 +62,9 @@ test('does not mistake phone numbers or prices for a time', () => {
 
   assert.deepEqual(candidates, []);
 });
+
+test('does not combine date and time from different columns', () => {
+  const original = block('time', 'Order Time: 7:05 PM', 550);
+  const time = { ...original, lines: [{ ...original.lines[0], boundingBox: { x: 500, y: 550, width: 300, height: 50 } }] };
+  assert.deepEqual(extractTimestampCandidates([block('date', 'Order Date: 10-02-26', 500), time]), []);
+});

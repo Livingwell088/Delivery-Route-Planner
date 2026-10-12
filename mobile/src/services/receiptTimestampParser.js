@@ -1,34 +1,11 @@
+import { receiptLines, relatedFollowingLine, hasLineGeometry } from './receiptLines.js';
 import { createTimestampCandidate } from '../domain/receiptScan.js';
 
 const DATE_PATTERN = /\b(0?[1-9]|1[0-2])\s*[\/-]\s*(0?[1-9]|[12]\d|3[01])\s*[\/-]\s*(\d{2}|\d{4})\b/i;
 const TIME_PATTERN = /\b(0?[1-9]|1[0-2])\s*(?::|[.;]|\s)?\s*([0-5]\d)\s*(AM|PM)\b/i;
 const ORDER_LABEL_PATTERN = /\b(?:order(?:ed)?|date|time|placed|delivery)\b/i;
 
-function cleanText(value) {
-  return value.replace(/\s+/g, ' ').trim();
-}
 
-function receiptLines(blocks) {
-  const lines = blocks.flatMap((block) => (
-    block.lines.length
-      ? block.lines
-      : block.text.split(/\r?\n/).filter((text) => text.trim()).map((text, index) => ({
-        id: `${block.id}-derived-${index}`,
-        text,
-        boundingBox: block.boundingBox,
-      }))
-  ));
-
-  return lines
-    .map((line) => ({ ...line, cleanedText: cleanText(line.text) }))
-    .filter((line) => line.cleanedText)
-    .sort((left, right) => {
-      const verticalDifference = left.boundingBox.y - right.boundingBox.y;
-      return Math.abs(verticalDifference) > 4
-        ? verticalDifference
-        : left.boundingBox.x - right.boundingBox.x;
-    });
-}
 
 function parseDate(match) {
   const month = Number(match[1]);
@@ -56,6 +33,10 @@ function parseTime(match) {
 function candidateScore({ sameLine, lineIndex, lines }) {
   const evidence = ['valid receipt date detected', 'valid 12-hour time detected'];
   let value = 0.65;
+  if (!hasLineGeometry(lines[lineIndex])) {
+    value -= 0.2;
+    evidence.push('OCR line geometry unavailable');
+  }
 
   if (sameLine) {
     value += 0.12;
@@ -86,7 +67,7 @@ export function extractTimestampCandidates(blocks) {
     const parsedDate = parseDate(dateMatch);
     if (!parsedDate) return;
 
-    const possibleTimeLines = lines.slice(lineIndex, lineIndex + 3);
+    const possibleTimeLines = lines.slice(lineIndex, lineIndex + 3).filter((line) => line.id === dateLine.id || relatedFollowingLine(dateLine, line));
     const timeLine = possibleTimeLines.find(({ cleanedText }) => TIME_PATTERN.test(cleanedText));
     if (!timeLine) return;
 
