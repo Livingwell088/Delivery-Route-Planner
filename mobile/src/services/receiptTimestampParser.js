@@ -1,4 +1,4 @@
-import { receiptLines, relatedFollowingLine, hasLineGeometry } from './receiptLines.js';
+import { receiptLines, relatedFollowingLine, relatedSameRowLine, hasLineGeometry } from './receiptLines.js';
 import { createTimestampCandidate } from '../domain/receiptScan.js';
 
 const DATE_PATTERN = /\b(0?[1-9]|1[0-2])\s*[\/-]\s*(0?[1-9]|[12]\d|3[01])\s*[\/-]\s*(\d{2}|\d{4})\b/i;
@@ -42,6 +42,10 @@ function candidateScore({ sameLine, lineIndex, lines, timeLine }) {
     value += 0.12;
     evidence.push('date and time appear on the same OCR line');
   }
+  if (!sameLine && relatedSameRowLine(lines[lineIndex], timeLine)) {
+    value += 0.07;
+    evidence.push('date and time appear in neighboring blocks on the same row');
+  }
 
   const nearbyText = lines
     .slice(Math.max(0, lineIndex - 2), lineIndex + 2)
@@ -72,7 +76,8 @@ export function extractTimestampCandidates(blocks) {
     const parsedDate = parseDate(dateMatch);
     if (!parsedDate) return;
 
-    const possibleTimeLines = [dateLine];
+    const possibleTimeLines = [dateLine, ...lines.filter((line) => line.id !== dateLine.id
+      && !DATE_PATTERN.test(line.cleanedText) && relatedSameRowLine(dateLine, line))];
     for (const line of lines.slice(lineIndex + 1, lineIndex + 3)) {
       if (DATE_PATTERN.test(line.cleanedText)) break;
       if (relatedFollowingLine(dateLine, line)) possibleTimeLines.push(line);

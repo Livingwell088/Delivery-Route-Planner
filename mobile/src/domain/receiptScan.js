@@ -93,22 +93,34 @@ export function createTimestampCandidate({ id, rawDate, rawTime, timestamp = nul
   });
 }
 
+export function createOrderNumberCandidate({ id, orderNumber, sourceLineIds = [], confidence }) {
+  if (!Array.isArray(sourceLineIds)) throw new TypeError('Order number sourceLineIds must be an array.');
+  return freeze({ id: requiredString(id, 'Order number candidate id'),
+    orderNumber: requiredString(orderNumber, 'Order number'),
+    sourceLineIds: freeze(sourceLineIds.map((lineId) => requiredString(lineId, 'Source line id'))),
+    confidence: normalizeConfidence(confidence) });
+}
+
 export function createReceiptScanResult({
   recognizedText, imageSize, blocks = [], addressCandidates = [], timestampCandidates = [],
   selectedAddressCandidateId = null, selectedTimestampCandidateId = null, confidence,
+  orderNumberCandidates = [], selectedOrderNumberCandidateId = null,
 }) {
-  if (![blocks, addressCandidates, timestampCandidates].every(Array.isArray)) {
+  if (![blocks, addressCandidates, timestampCandidates, orderNumberCandidates].every(Array.isArray)) {
     throw new TypeError('Receipt scan result collections must be arrays.');
   }
   const result = {
     recognizedText: requiredString(recognizedText, 'Recognized text'), imageSize: createImageSize(imageSize),
     blocks: freeze(blocks.map(createOCRTextBlock)), addressCandidates: freeze(addressCandidates.map(createAddressCandidate)),
     timestampCandidates: freeze(timestampCandidates.map(createTimestampCandidate)),
+    orderNumberCandidates: freeze(orderNumberCandidates.map(createOrderNumberCandidate)),
+    selectedOrderNumberCandidateId,
     selectedAddressCandidateId, selectedTimestampCandidateId, confidence: optionalConfidence(confidence),
   };
   const hasAddress = selectedAddressCandidateId == null || result.addressCandidates.some(({ id }) => id === selectedAddressCandidateId);
   const hasTimestamp = selectedTimestampCandidateId == null || result.timestampCandidates.some(({ id }) => id === selectedTimestampCandidateId);
-  if (!hasAddress || !hasTimestamp) throw new RangeError('Selected candidate ids must reference candidates in the result.');
+  const hasOrderNumber = selectedOrderNumberCandidateId == null || result.orderNumberCandidates.some(({ id }) => id === selectedOrderNumberCandidateId);
+  if (!hasAddress || !hasTimestamp || !hasOrderNumber) throw new RangeError('Selected candidate ids must reference candidates in the result.');
   return freeze(result);
 }
 

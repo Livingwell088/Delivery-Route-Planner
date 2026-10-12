@@ -12,20 +12,17 @@ function scan(addressScore = 0.95, timeScore = 0.95) {
 function draft(input = scan()) {
   return createOrderDraftFromReceipt(input, 'OCR-123', { allowCorrection: true });
 }
-function verify(input) {
-  return { ...input, receiptReview: { ...input.receiptReview, addressConfirmed: true, timeConfirmed: true } };
-}
 
-test('high and medium receipt drafts require explicit verification', () => {
+test('high and medium receipt drafts are ready for the single confirm action', () => {
   for (const score of [0.95, 0.8]) {
     const input = draft(scan(score, score));
-    assert.match(validateReceiptDraft(input), /Verify/);
-    assert.equal(validateReceiptDraft(verify(input)), null);
+
+    assert.equal(validateReceiptDraft(input), null);
   }
 });
 
-test('low confidence address cannot pass unchanged even when acknowledged', () => {
-  const input = verify(draft(scan(0.6)));
+test('low confidence address cannot pass unchanged through the single confirm action', () => {
+  const input = draft(scan(0.6));
   assert.match(validateReceiptDraft(input), /Correct.*address/);
   input.address.formatted_address = '455 MAIN ST ROOM 206, WORCESTER, MA 01608';
   assert.match(validateReceiptDraft(input), /Correct.*address/);
@@ -35,7 +32,7 @@ test('low confidence address cannot pass unchanged even when acknowledged', () =
 });
 
 test('uncertain time requires a meaningful time correction', () => {
-  const input = verify(draft(scan(0.95, 0.6)));
+  const input = draft(scan(0.95, 0.6));
   assert.match(validateReceiptDraft(input), /Correct.*time/);
   input.placedAt = '2026-08-29T16:12:00-04:00';
   assert.match(validateReceiptDraft(input), /Correct.*time/);
@@ -43,14 +40,14 @@ test('uncertain time requires a meaningful time correction', () => {
   assert.equal(validateReceiptDraft(input), null);
 });
 
-test('manual entry recovers empty OCR and allows explicitly verified missing ZIP', () => {
+test('completed manual entry without ZIP is ready for the single confirm action', () => {
   const input = createManualReceiptDraft('manual');
   assert.equal(input.address.formatted_address, '');
   assert.match(validateReceiptDraft(input), /Enter/);
   input.address.formatted_address = '455 Main St Room 206, Worcester, MA';
   input.placedAt = '2026-08-29T20:12:00.000Z';
-  assert.match(validateReceiptDraft(input), /Verify/);
-  assert.equal(validateReceiptDraft(verify(input)), null);
+
+  assert.equal(validateReceiptDraft(input), null);
 });
 
 test('missing timestamp recovery preserves the selected address and requires time entry', () => {
@@ -61,11 +58,11 @@ test('missing timestamp recovery preserves the selected address and requires tim
   assert.match(recovery.address.formatted_address, /Room 206/);
   assert.equal(recovery.placedAt, '');
   recovery.placedAt = '2026-08-29T20:12:00.000Z';
-  assert.equal(validateReceiptDraft(verify(recovery)), null);
+  assert.equal(validateReceiptDraft(recovery), null);
 });
 
 test('malformed destination, invalid time and missing review metadata block save', () => {
-  const input = verify(draft());
+  const input = draft();
   input.address.formatted_address = 'unknown';
   assert.match(validateReceiptDraft(input), /full destination/);
   input.address.formatted_address = '455 Main St, Worcester, MA 01608';
@@ -86,4 +83,17 @@ test('final corrected draft fingerprint matches scanner identity and preserves l
   const corrected = createDraftReceiptFingerprint(result);
   result.placedAt = '2026-08-29T20:18:00.000Z';
   assert.notEqual(createDraftReceiptFingerprint(result), corrected);
+});
+
+test('manual receipt time rejects silent calendar rollover and ambiguous date strings', () => {
+  for (const value of ['2026-02-30T16:12:00Z', '2026-08-29T24:00:00Z', '1', '08/29/2026', '2026-08-29T16:12:00']) {
+    const input = draft();
+    input.placedAt = value;
+    assert.match(validateReceiptDraft(input), /valid ISO placed time/);
+  }
+  const valid = draft();
+  valid.placedAt = '2028-02-29T16:12:00-04:00';
+  assert.equal(validateReceiptDraft(valid), null);
+  valid.placedAt = '2028-02-29T16:12-04:00';
+  assert.equal(validateReceiptDraft(valid), null);
 });

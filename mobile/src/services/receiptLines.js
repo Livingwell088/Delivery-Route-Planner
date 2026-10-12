@@ -35,3 +35,13 @@ export function relatedFollowingLine(anchor, line, maxLineHeights = 3) {
   return b.y > a.y + height * 0.2 && b.y - a.y <= height * maxLineHeights
     && Math.abs(a.x - b.x) <= height * 1.5;
 }
+
+/** Adjacent text fragments on one printed row, rather than separate columns. */
+export function relatedSameRowLine(left, right) {
+  if (!hasLineGeometry(left) || !hasLineGeometry(right)) return false;
+  const a = left.boundingBox;
+  const b = right.boundingBox;
+  const height = Math.max(a.height, b.height);
+  const gap = b.x - (a.x + a.width);
+  return Math.abs(a.y - b.y) <= height * 0.5 && gap >= -height * 0.25 && gap <= height * 4;
+}

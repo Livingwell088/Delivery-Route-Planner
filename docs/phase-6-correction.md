@@ -7,15 +7,16 @@ entry. Correction drafts preserve available selected fields; unavailable fields
 start blank rather than using a merchant or inferred replacement.
 
 Receipt drafts retain original values, score/evidence, required correction
-fields and two driver verification flags. Field edits reset both verification
-flags. Low-confidence address/time fields must change meaningfully before save:
+fields. Confirm and add order is the single driver confirmation action; separate
+address/time verification switches were removed at the user's request.
+Low-confidence address/time fields must change meaningfully before save:
 case/whitespace-only address changes and equivalent time-zone representations
 do not resolve uncertainty. When ambiguity penalties make the overall score low,
 at least one extracted value must change or the driver must rescan/select a
 better candidate. Edits do not increase the original OCR confidence.
 
-Every receipt requires explicit destination/unit verification and placed-time
-verification. The final address must include a house number/street, city and
+Every receipt requires the final Confirm and add order action. The final address
+must include a house number/street, city and
 state, with optional ZIP. Drivers may omit an unprinted ZIP after verification;
 the parser still does not produce partial address candidates or invent ZIPs.
 The form explains required corrections, keeps warnings visible, and offers
@@ -42,14 +43,14 @@ workflow behavior has not yet been checked.
 2. Import a missing-ZIP fixture: open Correct receipt details, enter the full
    destination without inventing ZIP, verify both fields and save.
 3. Import unreadable/no-text material: Enter manually must open a blank draft.
-4. On an uncertain extraction, toggle verification without correcting the weak
-   field: save stays blocked. Correct it, verify again and save.
-5. Change a field after verification: both verification switches reset.
+4. On an uncertain extraction, leave the weak field unchanged: save stays
+   blocked. Correct it and use Confirm and add order.
+5. Change a field: validation updates without requiring additional switches.
 6. Cancel a draft and scan it again: it must not be marked already added.
 7. Save a corrected order and rescan: duplicate warning must appear; attempting
    to save identical final details through correction must be blocked.
 8. Scan another receipt for the same destination at a later time: allow it.
 9. Rescan/cancel from correction; check mock test mode and image import still work.
 
-Steps 4–5 remain uncommitted until requested. Phase 6 completion still requires
-the image/OCR and emulator validation of Step 6.
+Steps 4–5 were committed as `220dd4c`. See `phase-6-validation.md` for the
+subsequent image/OCR and emulator validation of Step 6.

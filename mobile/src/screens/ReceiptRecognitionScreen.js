@@ -4,7 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, Vibration, View } from
 import { AppButton } from '../components/AppButton';
 import { RECEIPT_SCAN_STATUS } from '../domain/receiptScan';
 import { recognizeReceipt } from '../services/receiptOcr';
-import { assessReceiptScan, RECEIPT_ACTION } from '../services/receiptConfidence';
+import { assessReceiptScan, RECEIPT_ACTION, receiptReviewWarnings } from '../services/receiptConfidence';
 import { isDuplicateReceipt } from '../services/receiptDuplicate';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
@@ -103,10 +103,19 @@ export function ReceiptRecognitionScreen({
             ? 'This address and order time were already accepted.'
             : `Overall confidence: ${(Math.floor(assessment.confidence.value * 1000) / 10).toFixed(1)}%`}
         </Text>
-        {!duplicate && assessment.reasons.map((reason) => (
+        {!duplicate && receiptReviewWarnings(assessment).map((reason) => (
           <Text key={reason} style={commonStyles.muted}>{reason}</Text>
         ))}
       </View>
+      <Text style={commonStyles.eyebrow}>ORDER NUMBER</Text>
+      {(result.orderNumberCandidates ?? []).length ? result.orderNumberCandidates.map((candidate) => (
+        <View key={candidate.id} style={styles.candidateCard}>
+          <Text style={commonStyles.cardTitle}>#{candidate.orderNumber}</Text>
+          <AppButton label={result.selectedOrderNumberCandidateId === candidate.id ? 'Selected order number' : 'Select order number'}
+            disabled={result.selectedOrderNumberCandidateId === candidate.id} secondary
+            onPress={() => selectCandidate('selectedOrderNumberCandidateId', candidate.id)} />
+        </View>
+      )) : <Text style={commonStyles.muted}>Order number not found. Enter it when correcting receipt details.</Text>}
       <Text style={commonStyles.eyebrow}>ADDRESS CANDIDATES</Text>
       {result.addressCandidates.length ? result.addressCandidates.map((candidate, index) => (
         <View key={candidate.id} style={styles.candidateCard}>

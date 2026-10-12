@@ -58,7 +58,7 @@ export default function App() {
 
   const finishReceiptRecognition = (result) => {
     setReceiptScanResult(result);
-    setDraft(createOrderDraftFromReceipt(result, `OCR-${Date.now().toString().slice(-6)}`, { allowCorrection: true }));
+    setDraft(createOrderDraftFromReceipt(result, undefined, { allowCorrection: true }));
     setError(null);
     setScreen('confirm');
   };
@@ -158,7 +158,7 @@ export default function App() {
           onComplete={finishReceiptRecognition}
           onManual={() => {
             setReceiptScanResult(null);
-            setDraft(createManualReceiptDraft(`OCR-${Date.now().toString().slice(-6)}`));
+            setDraft(createManualReceiptDraft());
             setError(null);
             setScreen('confirm');
           }}
@@ -168,7 +168,7 @@ export default function App() {
       {screen === 'confirm' && draft && (
         <ConfirmOrderScreen
           draft={draft}
-          onChange={setDraft}
+          onChange={(nextDraft) => { setDraft(nextDraft); setError(null); }}
           onSave={saveDraft}
           onCancel={() => { setDraft(null); setError(null); setScreen('home'); }}
           onRetake={() => { setDraft(null); setError(null); setScreen('scanner'); }}

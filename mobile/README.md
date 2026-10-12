@@ -19,3 +19,10 @@ Configuration, assets, and the native entry point remain at the mobile project
 root because Expo expects them there.
 
 See `../docs/phase-4-mobile.md` for setup and the manual acceptance workflow.
+
+See `../docs/phase-6-validation.md` for receipt parser/OCR results, correction
+workflow checks and remaining physical-device validation limits. Run `npm test`
+for the deterministic receipt regression suite.
+# Receipt order numbers
+
+Receipt scans prefill the printed order number from an explicit order label or the prominent number beside the date on supported Ming House receipts. Leading zeros are preserved. Missing or ambiguous numbers require selection or entry in the editable confirmation form; scans no longer generate `OCR-###` identifiers.

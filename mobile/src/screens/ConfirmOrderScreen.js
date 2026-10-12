@@ -1,5 +1,6 @@
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { validateReceiptDraft } from '../services/receiptOrderDraft';
+import { receiptReviewWarnings } from '../services/receiptConfidence';
 
 import { AppButton } from '../components/AppButton';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -11,13 +12,12 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, o
   const isOcrDraft = draft.source === 'receipt-ocr';
   const review = draft.receiptReview;
   const update = (field, value) => {
-    const nextReview = review ? { ...review, addressConfirmed: false, timeConfirmed: false } : null;
     if (field === 'address') {
-      onChange({ ...draft, ...(review ? { receiptReview: nextReview } : {}),
+      onChange({ ...draft,
         address: { ...draft.address, formatted_address: value } });
       return;
     }
-    onChange({ ...draft, ...(review ? { receiptReview: nextReview } : {}), [field]: value });
+    onChange({ ...draft, [field]: value });
   };
 
   return (
@@ -33,7 +33,8 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, o
             : 'Verify the delivery address, unit and order time before adding this order.'}
         </Text>
       )}
-      {review?.reasons.map((reason) => <Text key={reason} style={commonStyles.muted}>{reason}</Text>)}
+      {receiptReviewWarnings(review).length > 0 && <Text style={commonStyles.eyebrow}>ORIGINAL SCAN WARNINGS</Text>}
+      {receiptReviewWarnings(review).map((reason) => <Text key={reason} style={commonStyles.muted}>{reason}</Text>)}
       <FormField
         label="Order number"
         value={draft.order_id}
@@ -55,14 +56,6 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, o
           {isOcrDraft ? 'Check all details against the receipt. Include every suite, room or unit. If no ZIP is printed, explicitly verify the city and state.' : 'Mock address recognized. Driver confirmation is still required.'}
         </Text>
       </View>
-      {review && ['address', 'time'].map((field) => (
-        <View key={field} style={styles.reviewRow}>
-          <Text style={commonStyles.muted}>{field === 'address'
-            ? 'I verified the full destination and all unit details.' : 'I verified the placed date and time.'}</Text>
-          <Switch value={review[`${field}Confirmed`]} onValueChange={(value) =>
-            onChange({ ...draft, receiptReview: { ...review, [`${field}Confirmed`]: value } })} />
-        </View>
-      ))}
       {isOcrDraft && validateReceiptDraft(draft) && <Text style={commonStyles.muted}>{validateReceiptDraft(draft)}</Text>}
       {error && <ErrorMessage message={error} />}
       <AppButton label="Confirm and add order" onPress={onSave} disabled={isOcrDraft && Boolean(validateReceiptDraft(draft))} />
@@ -73,7 +66,6 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, o
 }
 
 const styles = StyleSheet.create({
-  reviewRow: { gap: 8, alignItems: 'flex-start' },
   successBox: {
     backgroundColor: colors.successBackground,
     borderRadius: 12,

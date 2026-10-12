@@ -37,8 +37,9 @@ export function mapMLKitResult(ocrResult, imageSize) {
       boundingBox: frameToBoundingBox(line.frame),
     })),
   }));
-  const { addressCandidates, timestampCandidates } = parseReceiptCandidates(blocks, imageSize);
-  const confidence = calculateReceiptConfidence({ addressCandidates, timestampCandidates });
+  const { addressCandidates, timestampCandidates, orderNumberCandidates, selectedOrderNumberCandidateId } = parseReceiptCandidates(blocks, imageSize);
+  const confidence = calculateReceiptConfidence({ addressCandidates, timestampCandidates,
+    orderNumberCandidates, selectedOrderNumberCandidateId });
 
   return createReceiptScanResult({
     recognizedText: ocrResult.text,
@@ -46,6 +47,8 @@ export function mapMLKitResult(ocrResult, imageSize) {
     blocks,
     addressCandidates,
     timestampCandidates,
+    orderNumberCandidates,
+    selectedOrderNumberCandidateId,
     selectedAddressCandidateId: addressCandidates[0]?.id ?? null,
     selectedTimestampCandidateId: timestampCandidates[0]?.id ?? null,
     confidence,

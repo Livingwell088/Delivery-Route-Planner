@@ -68,3 +68,22 @@ test('does not combine date and time from different columns', () => {
   const time = { ...original, lines: [{ ...original.lines[0], boundingBox: { x: 500, y: 550, width: 300, height: 50 } }] };
   assert.deepEqual(extractTimestampCandidates([block('date', 'Order Date: 10-02-26', 500), time]), []);
 });
+
+test('pairs date with a neighboring same-row time even when OCR reports time slightly higher', () => {
+  const date = { ...block('date', '8/29/2026', 501), lines: [{ id: 'date-line', text: '8/29/2026',
+    boundingBox: { x: 50, y: 501, width: 220, height: 40 } }] };
+  const time = { ...block('time', '06:09 PM', 500), lines: [{ id: 'time-line', text: '06:09 PM',
+    boundingBox: { x: 300, y: 500, width: 200, height: 40 } }] };
+  const [candidate] = extractTimestampCandidates([time, date]);
+  assert.equal(candidate.timestamp, new Date(2026, 7, 29, 18, 9).toISOString());
+  assert.ok(candidate.confidence.value >= 0.7 && candidate.confidence.value < 0.9);
+  assert.deepEqual(candidate.sourceLineIds, ['date-line', 'time-line']);
+});
+
+test('same-row time in a remote column cannot attach to a date', () => {
+  const date = { ...block('date', '8/29/2026', 500), lines: [{ id: 'date-line', text: '8/29/2026',
+    boundingBox: { x: 50, y: 500, width: 220, height: 40 } }] };
+  const time = { ...block('time', '06:09 PM', 500), lines: [{ id: 'time-line', text: '06:09 PM',
+    boundingBox: { x: 800, y: 500, width: 200, height: 40 } }] };
+  assert.deepEqual(extractTimestampCandidates([date, time]), []);
+});

@@ -16,10 +16,10 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
   const [error, setError] = useState(null);
   const camera = useRef(null);
 
-  const prepareImage = async (image, fallbackMessage) => {
+  const prepareImage = async (image, fallbackMessage, cropToCameraFrame = true) => {
     setError(null);
     try {
-      setCapturedImage(await cropReceiptImage(image));
+      setCapturedImage(cropToCameraFrame ? await cropReceiptImage(image) : image);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : fallbackMessage);
     }
@@ -51,7 +51,7 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
         selectionLimit: 1,
       });
       if (!selection.canceled) {
-        await prepareImage(selection.assets[0], 'Unable to prepare this receipt image.');
+        await prepareImage(selection.assets[0], 'Unable to prepare this receipt image.', false);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to open the image library.');
