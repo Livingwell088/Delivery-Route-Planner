@@ -6,9 +6,8 @@ import {
   createReceiptScanError,
   createReceiptScanResult,
 } from '../domain/receiptScan';
-import { extractAddressCandidates } from './receiptAddressParser';
+import { parseReceiptCandidates } from './receiptParser';
 import { calculateReceiptConfidence } from './receiptConfidence';
-import { extractTimestampCandidates } from './receiptTimestampParser';
 
 function frameToBoundingBox(frame) {
   if (!frame) return { x: 0, y: 0, width: 0, height: 0 };
@@ -38,8 +37,7 @@ export function mapMLKitResult(ocrResult, imageSize) {
       boundingBox: frameToBoundingBox(line.frame),
     })),
   }));
-  const addressCandidates = extractAddressCandidates(blocks, imageSize);
-  const timestampCandidates = extractTimestampCandidates(blocks);
+  const { addressCandidates, timestampCandidates } = parseReceiptCandidates(blocks, imageSize);
   const confidence = calculateReceiptConfidence({ addressCandidates, timestampCandidates });
 
   return createReceiptScanResult({

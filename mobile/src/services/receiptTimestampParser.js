@@ -30,7 +30,7 @@ function parseTime(match) {
   };
 }
 
-function candidateScore({ sameLine, lineIndex, lines }) {
+function candidateScore({ sameLine, lineIndex, lines, timeLine }) {
   const evidence = ['valid receipt date detected', 'valid 12-hour time detected'];
   let value = 0.65;
   if (!hasLineGeometry(lines[lineIndex])) {
@@ -52,6 +52,11 @@ function candidateScore({ sameLine, lineIndex, lines }) {
     evidence.push('order-related label appears nearby');
   }
 
+  if (/\b(?:reprinted?|printed|payment|paid|settled)\b/i.test(`${lines[lineIndex].cleanedText} ${timeLine.cleanedText}`)) {
+    value -= 0.3;
+    evidence.push('payment or reprint timestamp label detected');
+  }
+
   return { value: Math.min(1, value), evidence };
 }
 
@@ -67,7 +72,11 @@ export function extractTimestampCandidates(blocks) {
     const parsedDate = parseDate(dateMatch);
     if (!parsedDate) return;
 
-    const possibleTimeLines = lines.slice(lineIndex, lineIndex + 3).filter((line) => line.id === dateLine.id || relatedFollowingLine(dateLine, line));
+    const possibleTimeLines = [dateLine];
+    for (const line of lines.slice(lineIndex + 1, lineIndex + 3)) {
+      if (DATE_PATTERN.test(line.cleanedText)) break;
+      if (relatedFollowingLine(dateLine, line)) possibleTimeLines.push(line);
+    }
     const timeLine = possibleTimeLines.find(({ cleanedText }) => TIME_PATTERN.test(cleanedText));
     if (!timeLine) return;
 
@@ -87,7 +96,7 @@ export function extractTimestampCandidates(blocks) {
       rawTime: timeMatch[0],
       timestamp,
       sourceLineIds: [...new Set([dateLine.id, timeLine.id])],
-      confidence: candidateScore({ sameLine, lineIndex, lines }),
+      confidence: candidateScore({ sameLine, lineIndex, lines, timeLine }),
     };
     const key = timestamp.toISOString();
     const previous = candidatesByTimestamp.get(key);
