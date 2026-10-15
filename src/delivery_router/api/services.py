@@ -26,6 +26,8 @@ class AddressValidationService:
             is_valid=valid,
             normalized_address=normalized if valid else None,
             warnings=warnings,
+            raw_address=address,
+            status="unvalidated" if valid else "invalid",
         )
 
 

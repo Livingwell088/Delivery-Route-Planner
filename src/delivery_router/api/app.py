@@ -39,11 +39,13 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings(
         _env_file=None,
+        map_provider="google" if google_api_key is not None else "development",
         google_maps_api_key=google_api_key,
     )
     configured_key = settings.google_maps_api_key
     google_api_key = configured_key.get_secret_value() if configured_key else None
-    if google_api_key:
+    if settings.map_provider == "google":
+        assert google_api_key is not None  # Settings rejects missing/blank credentials.
         google_client = GoogleMapsClient(
             google_api_key,
             timeout_seconds=settings.google_maps_timeout_seconds,
@@ -58,6 +60,8 @@ def create_app(
             address_service=address_service,
         )
     app = FastAPI(title="Delivery Route Optimizer API", version="0.1.0")
+    app.state.map_provider = settings.map_provider
+    logger.info("map_provider_selected provider=%s", settings.map_provider)
     app.state.orders = repository or InMemoryOrderRepository()
     app.state.address_service = address_service or AddressValidationService()
     app.state.route_service = route_service or RouteOptimizationService()

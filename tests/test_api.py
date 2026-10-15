@@ -11,6 +11,9 @@ def address(name: str, latitude: float = 40.0, longitude: float = -75.0) -> dict
     return {
         "formatted_address": name,
         "coordinates": {"latitude": latitude, "longitude": longitude},
+        "raw_address": None,
+        "unit": None,
+        "validated_location": None,
     }
 
 
@@ -53,6 +56,11 @@ def test_address_validation_returns_normalized_result_and_warning() -> None:
         "place_id": None,
         "coordinates": None,
         "warnings": [],
+        "status": "unvalidated",
+        "raw_address": "10  Main St",
+        "unit": None,
+        "candidates": [],
+        "validated_location": None,
     }
     assert invalid.json()["is_valid"] is False
     assert invalid.json()["warnings"]

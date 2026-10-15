@@ -48,6 +48,9 @@ def test_google_geocoding_returns_canonical_address_and_coordinates() -> None:
     result = service.validate("455 Main St, Worcester, MA")
 
     assert result.is_valid is True
+    assert result.status == "needs_confirmation"
+    assert result.raw_address == "455 Main St, Worcester, MA"
+    assert result.validated_location is None
     assert result.place_id == "google-place-a"
     assert result.coordinates is not None
     assert result.coordinates.latitude == pytest.approx(42.26315)
@@ -61,7 +64,26 @@ def test_google_geocoding_returns_invalid_for_no_results() -> None:
     result = service.validate("not a real address")
 
     assert result.is_valid is False
+    assert result.status == "invalid"
     assert result.warnings == ["Google Maps could not locate this address."]
+
+
+def test_partial_google_match_still_requires_review_and_is_not_validated() -> None:
+    service = GoogleAddressValidationService(mock_client(
+        lambda _request: httpx.Response(200, json={
+            "status": "OK",
+            "results": [{
+                "formatted_address": "10 Example Street, Worcester, MA",
+                "place_id": "synthetic-place", "partial_match": True,
+                "geometry": {"location": {"lat": 42.26, "lng": -71.80}},
+            }],
+        })
+    ))
+    result = service.validate("10 Example St, Worcester, MA")
+    assert result.is_valid is False
+    assert result.status == "needs_confirmation"
+    assert result.validated_location is None
+    assert result.warnings
 
 
 def test_google_client_retries_temporary_provider_failure() -> None:

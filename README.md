@@ -56,7 +56,8 @@ Interactive OpenAPI documentation is then available at
 Without provider configuration, the development travel-matrix service requires
 latitude and longitude and uses a deterministic distance estimate. To use
 Google geocoding and road durations instead, enable the Geocoding API and
-Routes API in Google Cloud. Copy `.env.example` to `.env`, replace the key
+Routes API in Google Cloud. Select `MAP_PROVIDER=google` explicitly.
+Copy `.env.example` to `.env`, replace the key
 placeholder, and start the server:
 
 ```powershell
@@ -67,6 +68,18 @@ uvicorn delivery_router.api.app:app --reload --port 8002
 
 Never commit the API key. When Google mode is enabled, optimization requests
 may contain address text without manually supplied coordinates.
+
+For an existing `.env` containing only a Google key, add `MAP_PROVIDER=google`.
+The server now rejects a configured key in development-provider mode instead of
+silently ignoring it. To run without Google, use `MAP_PROVIDER=development` and
+remove `GOOGLE_MAPS_API_KEY`. Set `APP_ENVIRONMENT=production` for deployments;
+production rejects the development estimator and Google mode requires a nonblank
+key. Provider errors never trigger an automatic switch to estimated travel times.
+
+Phase 7 Step 1 adds the location contract and explicit configuration; it does
+not yet enforce driver confirmation or backend validation references at the
+optimizer boundary. See [Phase 7 foundation](docs/phase-7-foundation.md) for the
+contract, Google setup requirements, and remaining implementation steps.
 
 ## Routing strategies
 

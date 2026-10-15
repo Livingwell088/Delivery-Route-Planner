@@ -1,8 +1,8 @@
 """Public request and response models for the HTTP API."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -19,11 +19,60 @@ class Coordinates(ApiModel):
     longitude: float = Field(ge=-180, le=180)
 
 
+ValidationStatus = Literal[
+    "unvalidated", "needs_selection", "needs_confirmation", "validated", "invalid"
+]
+
+
+class AddressCandidate(ApiModel):
+    """A provider result to review, not proof that an order is ready to route."""
+
+    candidate_id: NonEmptyString
+    provider: Literal["google"] = "google"
+    normalized_address: NonEmptyString
+    place_id: NonEmptyString
+    coordinates: Coordinates
+    street_number: str | None = None
+    street: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
+    location_type: str | None = None
+    partial_match: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ValidatedLocation(ApiModel):
+    """Backend-issued location snapshot; references must be verified server-side."""
+
+    provider: Literal["google"] = "google"
+    place_id: NonEmptyString
+    coordinates: Coordinates
+    normalized_address: NonEmptyString
+    validation_reference: NonEmptyString
+    validated_at: AwareDatetime
+    expires_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def require_positive_validity_window(self) -> "ValidatedLocation":
+        if self.expires_at <= self.validated_at:
+            raise ValueError("expires_at must be later than validated_at")
+        return self
+
+
 class Address(ApiModel):
-    """A user-confirmed address and its provider-independent coordinates."""
+    """Shared by drafts, orders, restaurant origins, and optimized stops.
+
+    Legacy text/coordinates remain accepted during the Phase 7 migration.
+    Client-supplied location metadata alone never establishes trusted validation.
+    """
 
     formatted_address: NonEmptyString
     coordinates: Coordinates | None = None
+    raw_address: NonEmptyString | None = None
+    unit: NonEmptyString | None = None
+    validated_location: ValidatedLocation | None = None
 
 
 class AddressValidationRequest(ApiModel):
@@ -31,11 +80,27 @@ class AddressValidationRequest(ApiModel):
 
 
 class AddressValidationResponse(ApiModel):
+    # Legacy is_valid means provider recognition, not driver confirmation.
     is_valid: bool
     normalized_address: str | None = None
     place_id: str | None = None
     coordinates: Coordinates | None = None
     warnings: list[str] = Field(default_factory=list)
+    status: ValidationStatus = "unvalidated"
+    raw_address: str | None = None
+    unit: str | None = None
+    candidates: list[AddressCandidate] = Field(default_factory=list)
+    validated_location: ValidatedLocation | None = None
+
+    @model_validator(mode="after")
+    def require_location_for_validated_status(self) -> "AddressValidationResponse":
+        if self.status == "validated" and (
+            not self.is_valid or self.validated_location is None
+        ):
+            raise ValueError("validated status requires a recognized, confirmed location")
+        if self.status == "invalid" and self.is_valid:
+            raise ValueError("invalid status cannot have is_valid=true")
+        return self
 
 
 class OrderCreate(ApiModel):

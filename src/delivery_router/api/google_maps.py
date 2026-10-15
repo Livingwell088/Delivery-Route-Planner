@@ -141,6 +141,8 @@ class GoogleAddressValidationService:
             return AddressValidationResponse(
                 is_valid=False,
                 warnings=["Google Maps could not locate this address."],
+                raw_address=address,
+                status="invalid",
             )
         if provider_status != "OK":
             _raise_geocoding_error(provider_status, payload.get("error_message"))
@@ -158,6 +160,8 @@ class GoogleAddressValidationService:
         )
         return AddressValidationResponse(
             is_valid=not partial_match,
+            raw_address=address,
+            status="needs_confirmation",
             normalized_address=result["formatted_address"],
             place_id=result["place_id"],
             coordinates=Coordinates(
