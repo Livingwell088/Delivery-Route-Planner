@@ -1,6 +1,8 @@
 # Phase 7, Step 4: Confirmed locations and active runs
 
-Step 3 was committed as `fbf2f51`. Step 4 remains uncommitted for review.
+Step 3 was committed as `fbf2f51`; Step 4 as `539eaa7`.
+The routing limitation below describes that commit and is resolved by
+[Step 5](phase-7-place-id-matrix.md).
 
 ## Backend confirmation
 

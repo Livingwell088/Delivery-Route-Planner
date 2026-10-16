@@ -9,7 +9,8 @@ from delivery_router.api.google_maps import (
     GoogleMapsClient,
     GoogleTravelMatrixService,
 )
-from delivery_router.api.schemas import Address
+from delivery_router.api.schemas import Address, ValidatedLocation
+from datetime import datetime, timedelta, timezone
 
 
 def mock_client(handler) -> GoogleMapsClient:
@@ -130,13 +131,24 @@ def test_google_client_translates_forbidden_response() -> None:
     assert caught.value.code == "map_provider_configuration_error"
 
 
+def matrix_address(label):
+    now = datetime.now(timezone.utc)
+    return Address(formatted_address=label, validated_location=ValidatedLocation(
+        place_id=f"place-{label}", normalized_address=label,
+        coordinates={"latitude": 42, "longitude": -71}, validation_reference="adapter-test",
+        validated_at=now, expires_at=now + timedelta(hours=8),
+    ))
+
+
 def test_google_matrix_converts_route_seconds_to_complete_minute_matrix() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-goog-api-key"] == "test-key"
         assert request.headers["x-goog-fieldmask"].endswith("status,condition")
         payload = __import__("json").loads(request.content)
         assert payload["travelMode"] == "DRIVE"
-        assert payload["origins"][0]["waypoint"]["address"] == "Restaurant"
+        assert payload["origins"][0]["waypoint"] == {"placeId": "place-Restaurant"}
+        assert payload["routingPreference"] == "TRAFFIC_UNAWARE"
+        assert payload["origins"] == payload["destinations"]
         return httpx.Response(
             200,
             json=[
@@ -150,8 +162,8 @@ def test_google_matrix_converts_route_seconds_to_complete_minute_matrix() -> Non
     service = GoogleTravelMatrixService(mock_client(handler))
     matrix = service.build(
         {
-            "start": Address(formatted_address="Restaurant"),
-            "A": Address(formatted_address="Customer A"),
+            "start": matrix_address("Restaurant"),
+            "A": matrix_address("Customer A"),
         }
     )
 
@@ -173,8 +185,8 @@ def test_google_matrix_translates_unroutable_pair_to_api_error() -> None:
     with pytest.raises(ApiError) as caught:
         service.build(
             {
-                "start": Address(formatted_address="Restaurant"),
-                "A": Address(formatted_address="Customer A"),
+                "start": matrix_address("Restaurant"),
+                "A": matrix_address("Customer A"),
             }
         )
 

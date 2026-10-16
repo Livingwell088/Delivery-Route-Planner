@@ -203,6 +203,10 @@ For more address tests and expected results, see
 [Step 2 live address checks](phase-7-address-candidates.md). For mobile review,
 see [Step 3 emulator tests](phase-7-mobile-review.md).
 
+For confirmed-location routing and its manual checks, see
+[Step 5: Place ID matrices](phase-7-place-id-matrix.md). Restart the backend after
+updating its code; the mobile configuration and native build are unchanged by Step 5.
+
 ## Automated tests and Android bundle verification
 
 Backend, from the repository root:

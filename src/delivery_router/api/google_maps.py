@@ -1,7 +1,9 @@
 """Google Maps adapters for geocoding and road travel-time matrices."""
 
 from math import ceil
+from decimal import Decimal
 import logging
+import re
 import time
 from typing import Any
 
@@ -191,15 +193,17 @@ class GoogleAddressValidationService:
 
 
 class GoogleTravelMatrixService:
-    """Build a Phase 2 matrix using real Google road durations."""
+    """Build directed road times from locations already verified by the API gate."""
 
     def __init__(self, client: GoogleMapsClient) -> None:
         self.client = client
 
     def build(self, locations: dict[str, Address]) -> TravelTimeMatrix:
         location_ids = list(locations)
+        if not location_ids or any(address.validated_location is None for address in locations.values()):
+            raise ApiError(422, "location_review_required", "Confirm every destination and the restaurant before routing.")
         waypoints = [
-            {"waypoint": {"address": locations[location_id].formatted_address}}
+            {"waypoint": {"placeId": locations[location_id].validated_location.place_id}}
             for location_id in location_ids
         ]
         elements = self.client.request_matrix(
@@ -207,22 +211,33 @@ class GoogleTravelMatrixService:
                 "origins": waypoints,
                 "destinations": waypoints,
                 "travelMode": "DRIVE",
+                "routingPreference": "TRAFFIC_UNAWARE",
             }
         )
 
         times: dict[str, dict[str, int]] = {location_id: {} for location_id in location_ids}
+        seen = set()
         for element in elements:
-            origin_index = element.get("originIndex")
-            destination_index = element.get("destinationIndex")
-            if not isinstance(origin_index, int) or not isinstance(destination_index, int):
+            if not isinstance(element, dict):
+                raise _provider_unavailable()
+            # Protobuf JSON can omit scalar fields whose value is zero.
+            origin_index = element.get("originIndex", 0)
+            destination_index = element.get("destinationIndex", 0)
+            if type(origin_index) is not int or type(destination_index) is not int:
                 raise _provider_unavailable()
             if not (0 <= origin_index < len(location_ids)) or not (
                 0 <= destination_index < len(location_ids)
             ):
                 raise _provider_unavailable()
+            pair = (origin_index, destination_index)
+            if pair in seen:
+                raise _provider_unavailable()
+            seen.add(pair)
+            provider_status = element.get("status", {})
+            if not isinstance(provider_status, dict) or type(provider_status.get("code", 0)) is not int:
+                raise _provider_unavailable()
             if origin_index == destination_index:
-                continue
-            provider_status = element.get("status") or {}
+                continue  # The domain defines self-travel as zero.
             if (
                 element.get("condition") != "ROUTE_EXISTS"
                 or provider_status.get("code", 0) != 0
@@ -237,12 +252,12 @@ class GoogleTravelMatrixService:
                     },
                 )
             duration = element.get("duration")
-            if not isinstance(duration, str) or not duration.endswith("s"):
+            if not isinstance(duration, str) or not re.fullmatch(r"[0-9]{1,12}(?:\.[0-9]{1,9})?s", duration):
                 raise _provider_unavailable()
-            seconds = float(duration[:-1])
-            times[location_ids[origin_index]][location_ids[destination_index]] = max(
-                1, ceil(seconds / 60)
-            )
+            seconds = Decimal(duration[:-1])
+            if seconds > 315_576_000_000:  # Protobuf Duration's positive bound.
+                raise _provider_unavailable()
+            times[location_ids[origin_index]][location_ids[destination_index]] = ceil(seconds / 60)
 
         for origin in location_ids:
             for destination in location_ids:
