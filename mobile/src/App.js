@@ -138,7 +138,7 @@ export default function App() {
       setScreen('orders');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to confirm this address.');
-      retryAddress();
+      if (!['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) retryAddress();
     } finally {
       busy.current = false;
       setLoading(false);
@@ -168,7 +168,7 @@ export default function App() {
       setRevalidateAll(false);
       setScreen('route');
     } catch (caught) {
-      if (needsRestaurant) originReview.retry();
+      if (needsRestaurant && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
       if (caught?.code === 'location_review_required') {
         setRestaurant(null);
         setRevalidateAll(true);

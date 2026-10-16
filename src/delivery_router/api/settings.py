@@ -24,9 +24,16 @@ class Settings(BaseSettings):
     google_maps_bounds: str = "42.20,-71.90|42.35,-71.70"
     google_maps_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     google_maps_max_attempts: int = Field(default=2, ge=1, le=3)
+    google_maps_monthly_limit_usd: float = Field(default=5, ge=0, le=10000, allow_inf_nan=False)
+    google_maps_geocoding_daily_limit: int = Field(default=500, ge=0)
+    google_maps_matrix_daily_limit: int = Field(default=2000, ge=0)
+    google_maps_usage_db: str = Field(default="data/private/maps-usage.sqlite3", min_length=1)
+    google_maps_deadline_seconds: float = Field(default=20, gt=0, le=25)
 
     @model_validator(mode="after")
     def require_explicit_real_provider(self) -> "Settings":
+        if self.app_environment == "production" and self.google_maps_usage_db == ":memory:":
+            raise ValueError("Production requires a persistent Google usage database")
         if self.app_environment == "production" and self.map_provider != "google":
             raise ValueError("Production requires MAP_PROVIDER=google; estimates are development-only")
         if self.map_provider == "google" and (

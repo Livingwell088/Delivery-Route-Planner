@@ -45,3 +45,20 @@ def test_production_google_mode_is_supported() -> None:
 def test_unknown_provider_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, map_provider="unknown", google_maps_api_key=None)
+
+
+@pytest.mark.parametrize("values", [
+    {"google_maps_monthly_limit_usd": -1}, {"google_maps_monthly_limit_usd": float("nan")},
+    {"google_maps_geocoding_daily_limit": -1}, {"google_maps_matrix_daily_limit": -1},
+    {"google_maps_deadline_seconds": 0}, {"google_maps_deadline_seconds": 26},
+    {"google_maps_usage_db": ""},
+])
+def test_invalid_usage_controls_are_rejected(values):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, map_provider="development", google_maps_api_key=None, **values)
+
+
+def test_production_requires_persistent_usage_tracking():
+    with pytest.raises(ValidationError, match="persistent Google usage"):
+        Settings(_env_file=None, app_environment="production", map_provider="google",
+                 google_maps_api_key="test", google_maps_usage_db=":memory:")

@@ -3,6 +3,8 @@
 from math import ceil
 from decimal import Decimal
 import logging
+import json
+import random
 import re
 import time
 from typing import Any
@@ -12,6 +14,7 @@ import httpx
 from delivery_router.api.errors import ApiError
 from delivery_router.api.address_matching import google_candidate, normalize_address_input
 from delivery_router.api.schemas import Address, AddressContext, AddressValidationResponse
+from delivery_router.api.singleflight import SingleFlight
 from delivery_router.models import TravelTimeMatrix
 
 logger = logging.getLogger("delivery_router.api.google_maps")
@@ -32,6 +35,8 @@ class GoogleMapsClient:
         geocoding_components: str = "country:US",
         geocoding_bounds: str = "42.20,-71.90|42.35,-71.70",
         max_attempts: int = 2,
+        usage=None,
+        deadline_seconds: float = 20,
     ) -> None:
         if not api_key.strip():
             raise ValueError("Google Maps API key cannot be empty")
@@ -41,12 +46,20 @@ class GoogleMapsClient:
         self.geocoding_components = geocoding_components
         self.geocoding_bounds = geocoding_bounds
         self.max_attempts = max_attempts
+        self.timeout_seconds = timeout_seconds
+        self.deadline_seconds = deadline_seconds
+        self.usage = usage
+        self.flight = SingleFlight()
 
     def request_geocode(self, address: str) -> dict[str, Any]:
+        return self.flight.run(("geocoding", address), lambda: self._request_geocode(address))
+
+    def _request_geocode(self, address: str) -> dict[str, Any]:
         response = self._request(
             "geocoding",
-            lambda: self.client.get(
+            lambda remaining: self.client.get(
                 self.geocoding_url,
+                timeout=min(self.timeout_seconds, remaining),
                 params={
                     "address": address,
                     "key": self.api_key,
@@ -65,10 +78,15 @@ class GoogleMapsClient:
             raise _provider_unavailable() from exc
 
     def request_matrix(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        key = ("route_matrix", json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return self.flight.run(key, lambda: self._request_matrix(payload))
+
+    def _request_matrix(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         response = self._request(
             "route_matrix",
-            lambda: self.client.post(
+            lambda remaining: self.client.post(
                 self.matrix_url,
+                timeout=min(self.timeout_seconds, remaining),
                 headers={
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": self.api_key,
@@ -78,6 +96,7 @@ class GoogleMapsClient:
                 },
                 json=payload,
             ),
+            units=len(payload["origins"]) * len(payload["destinations"]),
         )
         try:
             value = response.json()
@@ -87,12 +106,23 @@ class GoogleMapsClient:
         except ValueError as exc:
             raise _provider_unavailable() from exc
 
-    def _request(self, operation: str, send: Any) -> httpx.Response:
+    def _request(self, operation: str, send: Any, units: int = 1) -> httpx.Response:
         started = time.perf_counter()
         last_error: Exception | None = None
         for attempt in range(1, self.max_attempts + 1):
+            if attempt > 1:
+                delay = min(1, 0.1 * 2 ** (attempt - 2)) + random.uniform(0, 0.1)
+                time.sleep(delay)
+            remaining = self.deadline_seconds - (time.perf_counter() - started)
+            if remaining <= 0:
+                break
+            if self.usage is not None:
+                self.usage.reserve(operation, units)
+            remaining = self.deadline_seconds - (time.perf_counter() - started)
+            if remaining <= 0:
+                break
             try:
-                response = send()
+                response = send(remaining)
                 if response.status_code in {401, 403}:
                     raise ApiError(
                         503,
@@ -100,7 +130,8 @@ class GoogleMapsClient:
                         "Google Maps rejected the backend credentials or configuration",
                     )
                 if response.status_code == 429:
-                    if attempt == self.max_attempts:
+                    # Do not retry earlier than a provider-supplied cooldown.
+                    if attempt == self.max_attempts or "Retry-After" in response.headers:
                         raise ApiError(
                             503,
                             "map_provider_rate_limited",

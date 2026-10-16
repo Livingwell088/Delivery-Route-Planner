@@ -23,8 +23,12 @@ export async function validateAddress(address, {
         map_provider_rate_limited: 'Address lookup has reached its Google usage limit. Try again later.',
         map_provider_unavailable: 'Google address lookup is temporarily unavailable. Try again.',
         location_review_required: 'This address lookup expired or changed. Retry the lookup and confirm again.',
+        map_usage_limit_reached: 'This app has reached its Google usage allowance. Your details are saved; contact the administrator before retrying.',
+        map_usage_unavailable: 'Google usage tracking is unavailable. Your details are saved; ask the administrator to check the backend.',
       };
-      throw new Error(messages[body?.error?.code] ?? `Address lookup failed (${response.status}). Try again.`);
+      const error = new Error(messages[body?.error?.code] ?? `Address lookup failed (${response.status}). Try again.`);
+      error.code = body?.error?.code;
+      throw error;
     }
     return body;
   } catch (error) {

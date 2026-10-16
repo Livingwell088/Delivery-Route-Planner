@@ -14,6 +14,7 @@ port 8081**.
 | Android emulator | Runs the installed RouteRunner Android app | Android Studio Device Manager |
 | API documentation | Send backend test requests from your computer | http://127.0.0.1:8002/docs |
 | Backend health | Confirm the API process is responding | http://127.0.0.1:8002/health |
+| Backend Google usage | Local counters, limits and gross estimates | http://127.0.0.1:8002/maps/usage |
 
 Repository location:
 
@@ -108,6 +109,11 @@ GOOGLE_MAPS_COMPONENTS=country:US
 GOOGLE_MAPS_BOUNDS=42.20,-71.90|42.35,-71.70
 GOOGLE_MAPS_TIMEOUT_SECONDS=10
 GOOGLE_MAPS_MAX_ATTEMPTS=2
+GOOGLE_MAPS_DEADLINE_SECONDS=20
+GOOGLE_MAPS_MONTHLY_LIMIT_USD=5
+GOOGLE_MAPS_GEOCODING_DAILY_LIMIT=500
+GOOGLE_MAPS_MATRIX_DAILY_LIMIT=2000
+GOOGLE_MAPS_USAGE_DB=data/private/maps-usage.sqlite3
 ```
 
 Replace the sample key locally; do not leave a placeholder. The key's project
@@ -208,6 +214,14 @@ For confirmed-location routing and its manual checks, see
 updating its code; the mobile configuration and native build are unchanged by Step 5.
 
 ## Automated tests and Android bundle verification
+
+Step 6 adds a default $5 **gross-usage** allowance, ignoring Google's free usage
+and credits: 1,000 combined geocoding requests/matrix elements per UTC month.
+This is deliberately conservative and can stop requests while the Google bill
+is still $0. View `/maps/usage` for this backend's counters. See
+[usage controls and manual checks](phase-7-usage-controls.md) for configuration.
+Keep `data/private/maps-usage.sqlite3` across backend restarts; deleting it resets
+local accounting. It contains counters, not addresses or credentials.
 
 Backend, from the repository root:
 

@@ -1,6 +1,5 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { apiUrl } from '../services/routeApi';
 import { reviewedAddressLabel } from '../services/addressReview';
 import { AppButton } from '../components/AppButton';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -34,7 +33,7 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
           </Pressable>
         </View>
       ))}
-      {error && <ErrorMessage message={`${error} Check that the API is running at ${apiUrl}.`} />}
+      {error && <ErrorMessage message={error} />}
       <AppButton label="Add another receipt" onPress={onAdd} secondary />
       {originReview && <View style={{ gap: 10 }}>
         <Text style={commonStyles.cardTitle}>Restaurant starting location</Text>

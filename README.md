@@ -56,10 +56,14 @@ Interactive OpenAPI documentation is then available at
 - `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
   `PUT /orders/{order_id}`, and `DELETE /orders/{order_id}`
 - `POST /routes/optimize`
+- `GET /maps/usage` (this backend's usage reservations and configured allowance)
 
 Google mode requires backend-confirmed locations for the restaurant and orders.
 The [Place ID matrix integration](docs/phase-7-place-id-matrix.md) routes to those
 confirmed destinations without geocoding their display text again.
+The [usage controls](docs/phase-7-usage-controls.md) default to a conservative
+$5 gross-usage allowance per UTC month, ignoring free credits. Check that guide
+before changing limits for daily operations.
 
 Without provider configuration, the development travel-matrix service requires
 latitude and longitude and uses a deterministic distance estimate. To use

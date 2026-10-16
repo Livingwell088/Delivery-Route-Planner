@@ -15,6 +15,7 @@ from delivery_router.api.google_maps import (
 )
 from delivery_router.api.repositories import InMemoryOrderRepository
 from delivery_router.api.location_validation import LocationValidation
+from delivery_router.api.map_usage import MapUsage
 from delivery_router.api.schemas import (
     Address,
     AddressConfirmationRequest,
@@ -44,12 +45,16 @@ def create_app(
         _env_file=None,
         map_provider="google" if google_api_key is not None else "development",
         google_maps_api_key=google_api_key,
+        google_maps_usage_db=":memory:",  # Explicit factory/test callers stay isolated.
     )
     configured_key = settings.google_maps_api_key
     google_api_key = configured_key.get_secret_value() if configured_key else None
     location_validation = LocationValidation(google_api_key) if google_api_key else None
+    usage = None
     if settings.map_provider == "google":
         assert google_api_key is not None  # Settings rejects missing/blank credentials.
+        usage = MapUsage(settings.google_maps_usage_db, settings.google_maps_monthly_limit_usd,
+                         settings.google_maps_geocoding_daily_limit, settings.google_maps_matrix_daily_limit)
         google_client = GoogleMapsClient(
             google_api_key,
             timeout_seconds=settings.google_maps_timeout_seconds,
@@ -57,6 +62,8 @@ def create_app(
             geocoding_components=settings.google_maps_components,
             geocoding_bounds=settings.google_maps_bounds,
             max_attempts=settings.google_maps_max_attempts,
+            deadline_seconds=settings.google_maps_deadline_seconds,
+            usage=usage,
         )
         address_service = address_service or GoogleAddressValidationService(google_client)
         route_service = route_service or RouteOptimizationService(
@@ -67,6 +74,7 @@ def create_app(
     app = FastAPI(title="Delivery Route Optimizer API", version="0.1.0")
     app.state.map_provider = settings.map_provider
     app.state.location_validation = location_validation
+    app.state.map_usage = usage
     logger.info("map_provider_selected provider=%s", settings.map_provider)
     app.state.orders = repository or InMemoryOrderRepository()
     app.state.address_service = address_service or AddressValidationService()
@@ -89,6 +97,10 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/maps/usage")
+    def maps_usage() -> dict:
+        return usage.snapshot() if usage else {"provider": "development", "tracking": False}
 
     @app.post("/addresses/validate", response_model=AddressValidationResponse)
     def validate_address(payload: AddressValidationRequest) -> AddressValidationResponse:

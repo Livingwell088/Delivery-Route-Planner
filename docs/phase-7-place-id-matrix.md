@@ -1,6 +1,7 @@
 # Phase 7 Step 5: route matrices use confirmed Place IDs
 
-Step 4 is committed as `539eaa7`. Step 5 is implemented and uncommitted for review.
+Step 4 is committed as `539eaa7`; Step 5 as `907458e`.
+The historical scope below is extended by [Step 6 usage controls](phase-7-usage-controls.md).
 
 ## Behavior
 
