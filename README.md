@@ -64,6 +64,8 @@ confirmed destinations without geocoding their display text again.
 The [usage controls](docs/phase-7-usage-controls.md) default to a conservative
 $5 gross-usage allowance per UTC month, ignoring free credits. Check that guide
 before changing limits for daily operations.
+The [Phase 7 acceptance report](docs/phase-7-acceptance.md) records automated
+delivery-flow checks and the remaining native device walkthrough.
 
 Without provider configuration, the development travel-matrix service requires
 latitude and longitude and uses a deterministic distance estimate. To use

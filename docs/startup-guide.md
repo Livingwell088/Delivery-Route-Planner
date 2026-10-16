@@ -215,6 +215,17 @@ updating its code; the mobile configuration and native build are unchanged by St
 
 ## Automated tests and Android bundle verification
 
+For the current completion status and final device walkthrough, see
+[Phase 7 acceptance](phase-7-acceptance.md). The cross-stack check runs actual
+mobile service modules against an isolated backend with mocked Google transport:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_phase7_acceptance.py -q -p no:cacheprovider
+```
+
+It needs Node.js, makes no live Google calls, and does not use port 8002 or the
+app's saved orders/usage database.
+
 Step 6 adds a default $5 **gross-usage** allowance, ignoring Google's free usage
 and credits: 1,000 combined geocoding requests/matrix elements per UTC month.
 This is deliberately conservative and can stop requests while the Google bill

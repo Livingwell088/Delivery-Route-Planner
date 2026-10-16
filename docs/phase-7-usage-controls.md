@@ -1,6 +1,7 @@
 # Phase 7 Step 6: Usage controls and request recovery
 
-Step 5 is committed as `907458e`. Step 6 remains uncommitted for review.
+Step 5 is committed as `907458e`; Step 6 as `bdac8ba`.
+See [Step 7 acceptance results](phase-7-acceptance.md) for the cross-stack test.
 
 ## Usage allowance
 

@@ -44,7 +44,7 @@ export function reviewedAddressLabel(order) {
 export function confirmAddressForOrder(draft, review, address) {
   const candidate = selectedAddressCandidate(review, draft.address.formatted_address);
   const location = address?.validated_location;
-  if (!candidate || address?.raw_address !== draft.address.formatted_address
+  if (!candidate || address?.raw_address !== draft.address.formatted_address.trim()
     || location?.provider !== 'google' || location.place_id !== candidate.place_id
     || !location.validation_reference || !(Date.parse(location.expires_at) > Date.now())
     || address.unit !== review.unit
