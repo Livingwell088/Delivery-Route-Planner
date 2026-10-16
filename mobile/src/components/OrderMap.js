@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 
 import { DEFAULT_RESTAURANT } from '../data/mockReceipts';
+import { reviewedAddressLabel } from '../services/addressReview';
 import { colors } from '../theme/colors';
 
 const MAP_PADDING = { top: 45, right: 45, bottom: 45, left: 45 };
@@ -90,7 +91,7 @@ export function OrderMap({ orders, showRoute = false }) {
             key={order.order_id}
             coordinate={order.address.coordinates}
             title={`Order #${order.order_id}`}
-            description={order.address.formatted_address}
+            description={reviewedAddressLabel(order)}
           >
             <View style={[styles.marker, styles.orderMarker]}>
               <Text style={styles.orderMarkerText}>{index + 1}</Text>

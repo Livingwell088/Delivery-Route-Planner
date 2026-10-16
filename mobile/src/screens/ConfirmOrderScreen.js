@@ -1,20 +1,25 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { validateReceiptDraft } from '../services/receiptOrderDraft';
 import { receiptReviewWarnings } from '../services/receiptConfidence';
+import { addressReviewError, updateDraftAddress } from '../services/addressReview';
 
 import { AppButton } from '../components/AppButton';
+import { AddressReview } from '../components/AddressReview';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { FormField } from '../components/FormField';
+import { PlacedTimeField } from '../components/PlacedTimeField';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, onRetake }) {
+export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRetryAddress,
+  onChange, onSave, error, onCancel, onRetake }) {
   const isOcrDraft = draft.source === 'receipt-ocr';
   const review = draft.receiptReview;
+  const receiptError = validateReceiptDraft(draft);
+  const locationError = addressReviewError(addressReview, draft.address.formatted_address);
   const update = (field, value) => {
     if (field === 'address') {
-      onChange({ ...draft,
-        address: { ...draft.address, formatted_address: value } });
+      onChange(updateDraftAddress(draft, value));
       return;
     }
     onChange({ ...draft, [field]: value });
@@ -46,19 +51,20 @@ export function ConfirmOrderScreen({ draft, onChange, onSave, error, onCancel, o
         onChangeText={(value) => update('address', value)}
         multiline
       />
-      <FormField
-        label="Placed time (ISO)"
+      <PlacedTimeField
         value={draft.placedAt}
-        onChangeText={(value) => update('placedAt', value)}
+        onChange={(value) => update('placedAt', value)}
       />
+      <AddressReview review={addressReview} onSelect={onSelectAddress} onRetry={onRetryAddress} />
       <View style={styles.successBox}>
         <Text style={styles.successText}>
-          {isOcrDraft ? 'Check all details against the receipt. Include every suite, room or unit. If no ZIP is printed, explicitly verify the city and state.' : 'Mock address recognized. Driver confirmation is still required.'}
+          Check all details against the receipt, including the recognized destination and every suite, room or unit. Confirming adds the order and confirms your selected location.
         </Text>
       </View>
-      {isOcrDraft && validateReceiptDraft(draft) && <Text style={commonStyles.muted}>{validateReceiptDraft(draft)}</Text>}
+      {receiptError && <Text style={commonStyles.muted}>{receiptError}</Text>}
+      {!receiptError && locationError && addressReview.status !== 'error' && <Text style={commonStyles.muted}>{locationError}</Text>}
       {error && <ErrorMessage message={error} />}
-      <AppButton label="Confirm and add order" onPress={onSave} disabled={isOcrDraft && Boolean(validateReceiptDraft(draft))} />
+      <AppButton label="Confirm and add order" onPress={onSave} disabled={Boolean(receiptError || locationError)} />
       {isOcrDraft && <AppButton label="Rescan" onPress={onRetake} secondary />}
       <AppButton label="Cancel" onPress={onCancel} secondary />
     </ScrollView>

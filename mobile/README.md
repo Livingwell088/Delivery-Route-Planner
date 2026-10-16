@@ -2,6 +2,8 @@
 
 Expo/React Native client for the Delivery Route Planner.
 
+Start here: [backend, emulator, and app startup guide](../docs/startup-guide.md).
+
 ## Source layout
 
 ```text
@@ -26,3 +28,10 @@ for the deterministic receipt regression suite.
 # Receipt order numbers
 
 Receipt scans prefill the printed order number from an explicit order label or the prominent number beside the date on supported Ming House receipts. Leading zeros are preserved. Missing or ambiguous numbers require selection or entry in the editable confirmation form; scans no longer generate `OCR-###` identifiers.
+
+# Phase 7 address review
+
+Confirmation now checks delivery addresses through the backend, shows Google
+candidates and warnings, and requires a current usable selection before adding
+an order. See [Step 3 setup and emulator checks](../docs/phase-7-mobile-review.md).
+Keep the Google server key in the root `.env`; mobile needs only its backend URL.

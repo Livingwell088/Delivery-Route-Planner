@@ -1,5 +1,8 @@
 # Delivery Route Optimizer
 
+For current Windows backend, Android emulator, and mobile startup instructions,
+use the [RouteRunner startup guide](docs/startup-guide.md).
+
 An isolated Python prototype that compares restaurant-delivery sequences using
 driving time, customer wait, and severe-lateness penalties. It is intentionally
 separate from the future mobile application.

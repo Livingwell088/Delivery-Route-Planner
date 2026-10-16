@@ -6,6 +6,7 @@ import { Alert, Linking, SafeAreaView, StyleSheet } from 'react-native';
 import { Header } from './components/Header';
 import { NAVIGATION_PREFERENCE_KEY } from './constants/storage';
 import { DEFAULT_RESTAURANT, mockReceipt } from './data/mockReceipts';
+import { useAddressReview } from './hooks/useAddressReview';
 import { ConfirmOrderScreen } from './screens/ConfirmOrderScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
@@ -17,6 +18,7 @@ import { createNavigationRoute } from './services/navigation';
 import { createReceiptFingerprint, createDraftReceiptFingerprint } from './services/receiptDuplicate';
 import { createOrderDraftFromReceipt, createManualReceiptDraft, validateReceiptDraft } from './services/receiptOrderDraft';
 import { optimizeRoute } from './services/routeApi';
+import { addressReviewError, confirmAddressForOrder } from './services/addressReview';
 import { colors } from './theme/colors';
 
 export default function App() {
@@ -31,6 +33,9 @@ export default function App() {
   const [receiptScanResult, setReceiptScanResult] = useState(null);
   const [acceptedReceiptFingerprints, setAcceptedReceiptFingerprints] = useState([]);
   const mockIndex = useRef(0);
+  const { review: addressReview, selectCandidate, retry: retryAddress } = useAddressReview(
+    draft?.address.formatted_address ?? '', screen === 'confirm' && Boolean(draft),
+  );
 
   useEffect(() => {
     AsyncStorage.getItem(NAVIGATION_PREFERENCE_KEY).then((value) => {
@@ -69,6 +74,11 @@ export default function App() {
       setError(validationError);
       return;
     }
+    const locationError = addressReviewError(addressReview, draft.address.formatted_address);
+    if (locationError) {
+      setError(locationError);
+      return;
+    }
     if (orders.some((order) => order.order_id === draft.order_id)) {
       setError(`Order #${draft.order_id} is already in the list.`);
       return;
@@ -82,7 +92,7 @@ export default function App() {
       const originalFingerprint = createReceiptFingerprint(receiptScanResult);
       setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
     }
-    setOrders((current) => [...current, draft]);
+    setOrders((current) => [...current, confirmAddressForOrder(draft, addressReview)]);
     setDraft(null);
     setRoute(null);
     setError(null);
@@ -168,6 +178,9 @@ export default function App() {
       {screen === 'confirm' && draft && (
         <ConfirmOrderScreen
           draft={draft}
+          addressReview={addressReview}
+          onSelectAddress={(id) => { selectCandidate(id); setError(null); }}
+          onRetryAddress={retryAddress}
           onChange={(nextDraft) => { setDraft(nextDraft); setError(null); }}
           onSave={saveDraft}
           onCancel={() => { setDraft(null); setError(null); setScreen('home'); }}

@@ -1,5 +1,8 @@
 # Phase 3: Backend foundation
 
+Historical phase notes: use the [current startup guide](startup-guide.md) for
+explicit provider configuration and current backend startup commands.
+
 ## Architecture
 
 The backend follows a small ports-and-adapters structure:

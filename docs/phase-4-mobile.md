@@ -1,5 +1,8 @@
 # Phase 4: Mobile application shell
 
+Historical phase notes: use the [current startup guide](startup-guide.md) for
+today's Google configuration, port 8002, and Android/native OCR startup.
+
 ## What is implemented
 
 The Expo/React Native app lives in `mobile/` and provides the complete mock

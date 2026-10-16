@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { apiUrl } from '../services/routeApi';
+import { reviewedAddressLabel } from '../services/addressReview';
 import { AppButton } from '../components/AppButton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { OrderMap } from '../components/OrderMap';
@@ -25,7 +26,7 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
           </View>
           <View style={commonStyles.orderDetails}>
             <Text style={commonStyles.cardTitle}>Order #{order.order_id}</Text>
-            <Text style={commonStyles.muted}>{order.address.formatted_address}</Text>
+            <Text style={commonStyles.muted}>{reviewedAddressLabel(order)}</Text>
           </View>
           <Pressable onPress={() => onRemove(order.order_id)}>
             <Text style={styles.remove}>Remove</Text>
