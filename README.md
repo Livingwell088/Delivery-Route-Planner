@@ -76,10 +76,13 @@ remove `GOOGLE_MAPS_API_KEY`. Set `APP_ENVIRONMENT=production` for deployments;
 production rejects the development estimator and Google mode requires a nonblank
 key. Provider errors never trigger an automatic switch to estimated travel times.
 
-Phase 7 Step 1 adds the location contract and explicit configuration; it does
-not yet enforce driver confirmation or backend validation references at the
-optimizer boundary. See [Phase 7 foundation](docs/phase-7-foundation.md) for the
-contract, Google setup requirements, and remaining implementation steps.
+Phase 7 adds the location contract, explicit configuration, and conservative
+Google candidate evaluation. The default component filter is `country:US`; for
+existing environments, remove `locality:Worcester` from `GOOGLE_MAPS_COMPONENTS`
+to allow nearby towns. Ambiguous or review-required addresses cannot silently
+reach the matrix service. Mobile selection and trusted backend validation
+references are still pending. See [Phase 7 foundation](docs/phase-7-foundation.md)
+and [candidate evaluation and manual checks](docs/phase-7-address-candidates.md).
 
 ## Routing strategies
 

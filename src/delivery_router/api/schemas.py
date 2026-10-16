@@ -40,6 +40,8 @@ class AddressCandidate(ApiModel):
     country: str | None = None
     location_type: str | None = None
     partial_match: bool = False
+    is_usable: bool = False
+    requires_review: bool = True
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -75,8 +77,18 @@ class Address(ApiModel):
     validated_location: ValidatedLocation | None = None
 
 
+class AddressContext(ApiModel):
+    """Optional explicit locality context for incomplete receipt text."""
+
+    city: NonEmptyString | None = None
+    state: NonEmptyString | None = None
+    postal_code: NonEmptyString | None = None
+    country: NonEmptyString | None = None
+
+
 class AddressValidationRequest(ApiModel):
     address: NonEmptyString
+    context: AddressContext | None = None
 
 
 class AddressValidationResponse(ApiModel):

@@ -5,6 +5,7 @@ from math import asin, cos, radians, sin, sqrt
 from delivery_router.api.errors import ApiError
 from delivery_router.api.schemas import (
     Address,
+    AddressContext,
     AddressValidationResponse,
     OptimizeRouteRequest,
     OptimizeRouteResponse,
@@ -18,7 +19,7 @@ from delivery_router.strategies import compare_strategies
 class AddressValidationService:
     """Local validation seam for a future geocoding provider."""
 
-    def validate(self, address: str) -> AddressValidationResponse:
+    def validate(self, address: str, context: AddressContext | None = None) -> AddressValidationResponse:
         normalized = " ".join(address.split())
         valid = len(normalized) >= 5 and any(char.isdigit() for char in normalized)
         warnings = [] if valid else ["Address must include a street number and name."]
@@ -126,9 +127,18 @@ class RouteOptimizationService:
                 422,
                 "address_not_found",
                 "Google Maps could not confidently locate an address",
-                {"address": address.formatted_address, "warnings": result.warnings},
+                {"address": address.formatted_address, "warnings": result.warnings,
+                 "status": result.status,
+                 "candidates": [candidate.model_dump(mode="json") for candidate in result.candidates]},
             )
+        unit = address.unit or result.unit
+        formatted = result.normalized_address
+        if unit:
+            street, separator, remainder = formatted.partition(",")
+            formatted = f"{street}, {unit}{separator}{remainder}"
         return Address(
-            formatted_address=result.normalized_address,
+            formatted_address=formatted,
             coordinates=result.coordinates,
+            raw_address=address.raw_address or result.raw_address,
+            unit=unit,
         )

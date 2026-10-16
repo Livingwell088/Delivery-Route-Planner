@@ -8,7 +8,8 @@ from typing import Any
 import httpx
 
 from delivery_router.api.errors import ApiError
-from delivery_router.api.schemas import Address, AddressValidationResponse, Coordinates
+from delivery_router.api.address_matching import google_candidate, normalize_address_input
+from delivery_router.api.schemas import Address, AddressContext, AddressValidationResponse
 from delivery_router.models import TravelTimeMatrix
 
 logger = logging.getLogger("delivery_router.api.google_maps")
@@ -26,9 +27,7 @@ class GoogleMapsClient:
         client: httpx.Client | None = None,
         timeout_seconds: float = 10.0,
         geocoding_region: str = "us",
-        geocoding_components: str = (
-            "country:US|administrative_area:MA|locality:Worcester"
-        ),
+        geocoding_components: str = "country:US",
         geocoding_bounds: str = "42.20,-71.90|42.35,-71.70",
         max_attempts: int = 2,
     ) -> None:
@@ -56,7 +55,10 @@ class GoogleMapsClient:
             ),
         )
         try:
-            return response.json()
+            value = response.json()
+            if not isinstance(value, dict):
+                raise ValueError("geocoding response must be an object")
+            return value
         except ValueError as exc:
             raise _provider_unavailable() from exc
 
@@ -133,41 +135,58 @@ class GoogleAddressValidationService:
     def __init__(self, client: GoogleMapsClient) -> None:
         self.client = client
 
-    def validate(self, address: str) -> AddressValidationResponse:
-        normalized = " ".join(address.split())
-        payload = self.client.request_geocode(normalized)
+    def validate(self, address: str, context: AddressContext | None = None) -> AddressValidationResponse:
+        normalized = normalize_address_input(address, context)
+        payload = self.client.request_geocode(normalized.query)
         provider_status = payload.get("status")
         if provider_status == "ZERO_RESULTS":
             return AddressValidationResponse(
                 is_valid=False,
                 warnings=["Google Maps could not locate this address."],
                 raw_address=address,
+                unit=normalized.unit,
                 status="invalid",
             )
         if provider_status != "OK":
             _raise_geocoding_error(provider_status, payload.get("error_message"))
 
         results = payload.get("results", [])
-        if not results:
+        if not isinstance(results, list) or not results:
             raise _provider_unavailable()
-        result = results[0]
-        location = result["geometry"]["location"]
-        partial_match = bool(result.get("partial_match"))
-        warnings = (
-            ["Google Maps returned a partial match; confirm it before routing."]
-            if partial_match
-            else []
-        )
+        candidates = []
+        seen = {}
+        for result in results:
+            candidate = google_candidate(result, normalized)
+            if candidate.place_id not in seen:
+                candidates.append(candidate)
+                seen[candidate.place_id] = candidate
+            elif candidate != seen[candidate.place_id]:
+                # Contradictory records must not be hidden by deduplication.
+                raise _provider_unavailable()
+        usable = [candidate for candidate in candidates if candidate.is_usable]
+        if not usable:
+            return AddressValidationResponse(
+                is_valid=False, status="invalid", raw_address=address,
+                unit=normalized.unit, candidates=candidates,
+                warnings=["No precise delivery location was found. Correct the street number, street, and town."],
+            )
+        if len(usable) > 1:
+            return AddressValidationResponse(
+                is_valid=False, status="needs_selection", raw_address=address,
+                unit=normalized.unit, candidates=candidates,
+                warnings=["Several delivery locations were found. Select the address that matches the receipt."],
+            )
+        selected = usable[0]
         return AddressValidationResponse(
-            is_valid=not partial_match,
+            is_valid=not selected.requires_review,
             raw_address=address,
+            unit=normalized.unit,
+            candidates=candidates,
             status="needs_confirmation",
-            normalized_address=result["formatted_address"],
-            place_id=result["place_id"],
-            coordinates=Coordinates(
-                latitude=location["lat"], longitude=location["lng"]
-            ),
-            warnings=warnings,
+            normalized_address=selected.normalized_address,
+            place_id=selected.place_id,
+            coordinates=selected.coordinates,
+            warnings=selected.warnings,
         )
 
 

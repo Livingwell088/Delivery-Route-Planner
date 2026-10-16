@@ -86,6 +86,8 @@ def create_app(
 
     @app.post("/addresses/validate", response_model=AddressValidationResponse)
     def validate_address(payload: AddressValidationRequest) -> AddressValidationResponse:
+        if payload.context is not None:
+            return app.state.address_service.validate(payload.address, context=payload.context)
         return app.state.address_service.validate(payload.address)
 
     @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)

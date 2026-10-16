@@ -24,9 +24,7 @@ def test_google_geocoding_returns_canonical_address_and_coordinates() -> None:
         assert request.url.params["address"] == "455 Main St, Worcester, MA"
         assert request.url.params["key"] == "test-key"
         assert request.url.params["region"] == "us"
-        assert request.url.params["components"] == (
-            "country:US|administrative_area:MA|locality:Worcester"
-        )
+        assert request.url.params["components"] == "country:US"
         assert request.url.params["bounds"] == "42.20,-71.90|42.35,-71.70"
         return httpx.Response(
             200,
@@ -36,7 +34,17 @@ def test_google_geocoding_returns_canonical_address_and_coordinates() -> None:
                     {
                         "formatted_address": "455 Main St, Worcester, MA 01608, USA",
                         "place_id": "google-place-a",
+                        "types": ["street_address"],
+                        "address_components": [
+                            {"long_name": "455", "types": ["street_number"]},
+                            {"long_name": "Main Street", "types": ["route"]},
+                            {"long_name": "Worcester", "types": ["locality"]},
+                            {"long_name": "Massachusetts", "short_name": "MA", "types": ["administrative_area_level_1"]},
+                            {"long_name": "United States", "short_name": "US", "types": ["country"]},
+                            {"long_name": "01608", "types": ["postal_code"]},
+                        ],
                         "geometry": {
+                            "location_type": "ROOFTOP",
                             "location": {"lat": 42.26315, "lng": -71.80165}
                         },
                     }
@@ -75,7 +83,16 @@ def test_partial_google_match_still_requires_review_and_is_not_validated() -> No
             "results": [{
                 "formatted_address": "10 Example Street, Worcester, MA",
                 "place_id": "synthetic-place", "partial_match": True,
-                "geometry": {"location": {"lat": 42.26, "lng": -71.80}},
+                "types": ["street_address"],
+                "address_components": [
+                    {"long_name": "10", "types": ["street_number"]},
+                    {"long_name": "Example Street", "types": ["route"]},
+                    {"long_name": "Worcester", "types": ["locality"]},
+                    {"short_name": "MA", "types": ["administrative_area_level_1"]},
+                    {"short_name": "US", "types": ["country"]},
+                    {"long_name": "01608", "types": ["postal_code"]},
+                ],
+                "geometry": {"location_type": "ROOFTOP", "location": {"lat": 42.26, "lng": -71.80}},
             }],
         })
     ))
