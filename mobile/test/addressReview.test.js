@@ -14,6 +14,13 @@ const candidate = (id = 'a', changes = {}) => ({
 const response = (candidates = [candidate()], status = 'needs_confirmation') => ({
   status, candidates, unit: 'Apt 2', warnings: [],
 });
+function confirmedAddress() {
+  return { formatted_address: `${candidate().normalized_address} · Apt 2`, raw_address: input,
+    unit: 'Apt 2', coordinates: candidate().coordinates, validated_location: {
+      provider: 'google', place_id: 'place-a', validation_reference: 'server-reference',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    } };
+}
 function harness(validate) {
   let state;
   const controller = createAddressReviewController({ validate, onChange: (value) => { state = value; } });
@@ -127,13 +134,14 @@ test('final confirmation preserves unit, coordinates, original input and chosen 
   const h = harness(async () => response());
   await h.controller.lookup(input);
   const draft = { order_id: '1', receiptReview: { action: 'confirm' }, address: { formatted_address: input } };
-  const saved = confirmAddressForOrder(draft, h.state);
+  const saved = confirmAddressForOrder(draft, h.state, confirmedAddress());
   assert.equal(saved.address.raw_address, input);
   assert.equal(saved.address.unit, 'Apt 2');
   assert.deepEqual(saved.address.coordinates, candidate().coordinates);
-  assert.equal(saved.addressReview.status, 'confirmed');
-  assert.equal(selectedAddressCandidate(saved.addressReview, input).place_id, 'place-a');
-  assert.equal(saved.address.validated_location, undefined);
+  assert.equal(saved.address.validated_location.place_id, 'place-a');
+  assert.equal(saved.address.validated_location.validation_reference, 'server-reference');
+  assert.throws(() => confirmAddressForOrder(draft, h.state));
+  assert.throws(() => confirmAddressForOrder(draft, h.state, { ...confirmedAddress(), raw_address: 'Changed' }));
   assert.equal(reviewedAddressLabel(saved), `${candidate().normalized_address} · Apt 2`);
   assert.equal(draft.address.unit, undefined);
 });
@@ -157,7 +165,7 @@ test('malformed coordinates or duplicate identities cannot enable confirmation',
 test('editing time or order number does not invalidate the same destination', async () => {
   const h = harness(async () => response());
   await h.controller.lookup(input);
-  assert.equal(confirmAddressForOrder({ order_id: '2', placedAt: 'changed', address: { formatted_address: input } }, h.state).order_id, '2');
+  assert.equal(confirmAddressForOrder({ order_id: '2', placedAt: 'changed', address: { formatted_address: input } }, h.state, confirmedAddress()).order_id, '2');
 });
 
 test('empty/loading review blocks confirmation', () => {

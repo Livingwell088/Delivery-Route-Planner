@@ -61,6 +61,7 @@ def test_address_validation_returns_normalized_result_and_warning() -> None:
         "unit": None,
         "candidates": [],
         "validated_location": None,
+        "lookup_reference": None,
     }
     assert invalid.json()["is_valid"] is False
     assert invalid.json()["warnings"]

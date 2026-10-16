@@ -20,7 +20,9 @@ export async function optimizeRoute(start, orders) {
 
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(body?.error?.message ?? `Route request failed (${response.status})`);
+    const error = new Error(body?.error?.message ?? `Route request failed (${response.status})`);
+    error.code = body?.error?.code;
+    throw error;
   }
   return body;
 }

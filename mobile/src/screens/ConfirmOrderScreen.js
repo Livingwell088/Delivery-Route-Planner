@@ -12,7 +12,7 @@ import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
 export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRetryAddress,
-  onChange, onSave, error, onCancel, onRetake }) {
+  onChange, onSave, error, onCancel, onRetake, saving = false }) {
   const isOcrDraft = draft.source === 'receipt-ocr';
   const review = draft.receiptReview;
   const receiptError = validateReceiptDraft(draft);
@@ -42,16 +42,19 @@ export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRe
       {receiptReviewWarnings(review).map((reason) => <Text key={reason} style={commonStyles.muted}>{reason}</Text>)}
       <FormField
         label="Order number"
+        editable={!saving}
         value={draft.order_id}
         onChangeText={(value) => update('order_id', value)}
       />
       <FormField
         label="Delivery address"
+        editable={!saving}
         value={draft.address.formatted_address}
         onChangeText={(value) => update('address', value)}
         multiline
       />
       <PlacedTimeField
+        editable={!saving}
         value={draft.placedAt}
         onChange={(value) => update('placedAt', value)}
       />
@@ -64,7 +67,7 @@ export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRe
       {receiptError && <Text style={commonStyles.muted}>{receiptError}</Text>}
       {!receiptError && locationError && addressReview.status !== 'error' && <Text style={commonStyles.muted}>{locationError}</Text>}
       {error && <ErrorMessage message={error} />}
-      <AppButton label="Confirm and add order" onPress={onSave} disabled={Boolean(receiptError || locationError)} />
+      <AppButton label={saving ? 'Confirming…' : 'Confirm and add order'} onPress={onSave} disabled={Boolean(saving || receiptError || locationError)} />
       {isOcrDraft && <AppButton label="Rescan" onPress={onRetake} secondary />}
       <AppButton label="Cancel" onPress={onCancel} secondary />
     </ScrollView>

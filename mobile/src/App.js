@@ -18,7 +18,9 @@ import { createNavigationRoute } from './services/navigation';
 import { createReceiptFingerprint, createDraftReceiptFingerprint } from './services/receiptDuplicate';
 import { createOrderDraftFromReceipt, createManualReceiptDraft, validateReceiptDraft } from './services/receiptOrderDraft';
 import { optimizeRoute } from './services/routeApi';
-import { addressReviewError, confirmAddressForOrder } from './services/addressReview';
+import { addressReviewError, selectedAddressCandidate, confirmAddressForOrder } from './services/addressReview';
+import { confirmAddress, ensureConfirmedAddress } from './services/addressApi';
+import { ACTIVE_SESSION_KEY, createSessionWriter, decodeActiveSession, encodeActiveSession } from './services/activeSession';
 import { colors } from './theme/colors';
 
 export default function App() {
@@ -33,6 +35,36 @@ export default function App() {
   const [receiptScanResult, setReceiptScanResult] = useState(null);
   const [acceptedReceiptFingerprints, setAcceptedReceiptFingerprints] = useState([]);
   const mockIndex = useRef(0);
+  const busy = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [restaurant, setRestaurant] = useState(null);
+  const [revalidateAll, setRevalidateAll] = useState(false);
+  const writeSession = useRef(createSessionWriter(AsyncStorage));
+  const needsRestaurant = !restaurant || Date.parse(restaurant.validated_location.expires_at) <= Date.now();
+  const originReview = useAddressReview(DEFAULT_RESTAURANT.formatted_address,
+    hydrated && screen === 'orders' && orders.length > 0 && needsRestaurant);
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(ACTIVE_SESSION_KEY).then((text) => {
+      if (!active) return;
+      const restored = decodeActiveSession(text);
+      setOrders(restored.orders);
+      setAcceptedReceiptFingerprints(restored.fingerprints);
+      if (restored.orders.length) setScreen('orders');
+      if (restored.discarded) Alert.alert('Previous run cleared', 'The saved delivery run expired or could not be restored. Scan the current orders again.');
+    }).catch(() => {
+      if (active) Alert.alert('Unable to restore orders', 'Local storage is unavailable. Your previous orders could not be loaded.');
+    }).finally(() => { if (active) setHydrated(true); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writeSession.current(encodeActiveSession(orders, acceptedReceiptFingerprints)).catch(() => {
+      Alert.alert('Orders not saved', 'This run is available now, but could not be saved for an app restart.');
+    });
+  }, [orders, acceptedReceiptFingerprints, hydrated]);
   const { review: addressReview, selectCandidate, retry: retryAddress } = useAddressReview(
     draft?.address.formatted_address ?? '', screen === 'confirm' && Boolean(draft),
   );
@@ -68,7 +100,8 @@ export default function App() {
     setScreen('confirm');
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
+    if (busy.current) return;
     const validationError = validateReceiptDraft(draft);
     if (validationError) {
       setError(validationError);
@@ -83,32 +116,66 @@ export default function App() {
       setError(`Order #${draft.order_id} is already in the list.`);
       return;
     }
-    if (draft.source === 'receipt-ocr') {
-      const fingerprint = createDraftReceiptFingerprint(draft);
-      if (fingerprint && acceptedReceiptFingerprints.includes(fingerprint)) {
-        setError('This destination and order time were already added.');
-        return;
-      }
-      const originalFingerprint = createReceiptFingerprint(receiptScanResult);
-      setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
+    const fingerprint = draft.source === 'receipt-ocr' ? createDraftReceiptFingerprint(draft) : null;
+    if (fingerprint && acceptedReceiptFingerprints.includes(fingerprint)) {
+      setError('This destination and order time were already added.');
+      return;
     }
-    setOrders((current) => [...current, confirmAddressForOrder(draft, addressReview)]);
-    setDraft(null);
-    setRoute(null);
-    setError(null);
-    setScreen('orders');
+    busy.current = true;
+    setLoading(true);
+    try {
+      if (!addressReview.lookupReference) throw new Error('Retry the address lookup before confirming.');
+      const selected = selectedAddressCandidate(addressReview, draft.address.formatted_address);
+      const address = await confirmAddress(draft.address.formatted_address,
+        addressReview.lookupReference, selected.candidate_id);
+      const confirmedOrder = confirmAddressForOrder(draft, addressReview, address);
+      const originalFingerprint = draft.source === 'receipt-ocr' ? createReceiptFingerprint(receiptScanResult) : null;
+      setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
+      setOrders((current) => [...current, { ...confirmedOrder, receiptFingerprints: [fingerprint, originalFingerprint].filter(Boolean) }]);
+      setDraft(null);
+      setRoute(null);
+      setError(null);
+      setScreen('orders');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to confirm this address.');
+      retryAddress();
+    } finally {
+      busy.current = false;
+      setLoading(false);
+    }
   };
 
   const requestRoute = async () => {
-    if (!orders.length) return;
+    if (!orders.length || busy.current) return;
+    busy.current = true;
     setLoading(true);
     setError(null);
     try {
-      setRoute(await optimizeRoute(DEFAULT_RESTAURANT, orders));
+      let origin = restaurant;
+      if (needsRestaurant) {
+        const selected = selectedAddressCandidate(originReview.review, DEFAULT_RESTAURANT.formatted_address);
+        if (!selected || !originReview.review.lookupReference) throw new Error('Check and select the restaurant starting location below.');
+        origin = await confirmAddress(DEFAULT_RESTAURANT.formatted_address,
+          originReview.review.lookupReference, selected.candidate_id);
+        setRestaurant(origin);
+      }
+      const currentOrders = [];
+      for (const order of orders) {
+        currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll }) });
+      }
+      setOrders(currentOrders);
+      setRoute(await optimizeRoute(origin, currentOrders));
+      setRevalidateAll(false);
       setScreen('route');
     } catch (caught) {
+      if (needsRestaurant) originReview.retry();
+      if (caught?.code === 'location_review_required') {
+        setRestaurant(null);
+        setRevalidateAll(true);
+      }
       setError(caught instanceof Error ? caught.message : 'Unable to optimize this route.');
     } finally {
+      busy.current = false;
       setLoading(false);
     }
   };
@@ -120,7 +187,9 @@ export default function App() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          setOrders((current) => current.filter((order) => order.order_id !== orderId));
+          const remaining = orders.filter((order) => order.order_id !== orderId);
+          setOrders(remaining);
+          setAcceptedReceiptFingerprints([...new Set(remaining.flatMap((order) => order.receiptFingerprints ?? []))]);
           setRoute(null);
         },
       },
@@ -133,7 +202,7 @@ export default function App() {
   };
 
   const openRoute = async () => {
-    const navigationRoute = createNavigationRoute(navigationApp, route?.ordered_stops ?? []);
+    const navigationRoute = createNavigationRoute(navigationApp, route?.ordered_stops ?? [], restaurant ?? DEFAULT_RESTAURANT);
     if (!navigationRoute) return;
 
     if (!navigationRoute.includesAllStops) {
@@ -146,9 +215,9 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} pointerEvents={loading || !hydrated ? 'none' : 'auto'}>
       <StatusBar style="dark" />
-      <Header screen={screen} onNavigate={setScreen} orderCount={orders.length} />
+      <Header screen={screen} onNavigate={(next) => { if (!busy.current && hydrated) setScreen(next); }} orderCount={orders.length} />
       {screen === 'home' && (
         <HomeScreen
           capturedReceipt={capturedReceipt}
@@ -178,19 +247,23 @@ export default function App() {
       {screen === 'confirm' && draft && (
         <ConfirmOrderScreen
           draft={draft}
+          saving={loading}
           addressReview={addressReview}
-          onSelectAddress={(id) => { selectCandidate(id); setError(null); }}
+          onSelectAddress={(id) => { if (!busy.current) { selectCandidate(id); setError(null); } }}
           onRetryAddress={retryAddress}
-          onChange={(nextDraft) => { setDraft(nextDraft); setError(null); }}
+          onChange={(nextDraft) => { if (!busy.current) { setDraft(nextDraft); setError(null); } }}
           onSave={saveDraft}
-          onCancel={() => { setDraft(null); setError(null); setScreen('home'); }}
-          onRetake={() => { setDraft(null); setError(null); setScreen('scanner'); }}
+          onCancel={() => { if (!busy.current) { setDraft(null); setError(null); setScreen('home'); } }}
+          onRetake={() => { if (!busy.current) { setDraft(null); setError(null); setScreen('scanner'); } }}
           error={error}
         />
       )}
       {screen === 'orders' && (
         <OrdersScreen
           orders={orders}
+          originReview={needsRestaurant && orders.length ? originReview : null}
+          restaurant={restaurant}
+          originReady={!needsRestaurant || !addressReviewError(originReview.review, DEFAULT_RESTAURANT.formatted_address)}
           onAdd={() => setScreen('home')}
           onRemove={removeOrder}
           onOptimize={requestRoute}
@@ -201,6 +274,7 @@ export default function App() {
       {screen === 'route' && route && (
         <RouteScreen
           route={route}
+          restaurant={restaurant}
           navigationApp={navigationApp}
           onNavigate={openRoute}
         />

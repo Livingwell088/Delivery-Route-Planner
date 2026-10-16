@@ -5,7 +5,7 @@ import { OrderMap } from '../components/OrderMap';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function RouteScreen({ route, navigationApp, onNavigate }) {
+export function RouteScreen({ route, navigationApp, onNavigate, restaurant }) {
   const navigationLabel = navigationApp === 'apple' ? 'Apple Maps' : 'Google Maps';
 
   return (
@@ -15,7 +15,7 @@ export function RouteScreen({ route, navigationApp, onNavigate }) {
       <Text style={commonStyles.subtitle}>
         {route.total_drive_minutes} min driving · {route.ordered_stops.length} stops
       </Text>
-      <OrderMap orders={route.ordered_stops} showRoute />
+      <OrderMap orders={route.ordered_stops} restaurant={restaurant} showRoute />
       {route.ordered_stops.map((stop) => (
         <View style={styles.routeRow} key={stop.order_id}>
           <View style={styles.routeMarker}>

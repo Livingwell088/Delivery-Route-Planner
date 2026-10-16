@@ -103,6 +103,7 @@ class AddressValidationResponse(ApiModel):
     unit: str | None = None
     candidates: list[AddressCandidate] = Field(default_factory=list)
     validated_location: ValidatedLocation | None = None
+    lookup_reference: str | None = None
 
     @model_validator(mode="after")
     def require_location_for_validated_status(self) -> "AddressValidationResponse":
@@ -113,6 +114,12 @@ class AddressValidationResponse(ApiModel):
         if self.status == "invalid" and self.is_valid:
             raise ValueError("invalid status cannot have is_valid=true")
         return self
+
+
+class AddressConfirmationRequest(ApiModel):
+    address: NonEmptyString
+    lookup_reference: NonEmptyString
+    candidate_id: NonEmptyString
 
 
 class OrderCreate(ApiModel):

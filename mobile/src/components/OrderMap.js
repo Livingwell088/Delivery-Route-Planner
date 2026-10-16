@@ -25,16 +25,17 @@ function getInitialRegion(coordinates) {
   };
 }
 
-export function OrderMap({ orders, showRoute = false }) {
+export function OrderMap({ orders, showRoute = false, restaurant = DEFAULT_RESTAURANT }) {
+  const origin = restaurant ?? DEFAULT_RESTAURANT;
   const map = useRef(null);
   const [mapReady, setMapReady] = useState(false);
   const coordinates = useMemo(
-    () => [DEFAULT_RESTAURANT.coordinates, ...orders.map((order) => order.address.coordinates).filter(Boolean)],
-    [orders],
+    () => [origin.coordinates, ...orders.map((order) => order.address.coordinates).filter(Boolean)],
+    [orders, origin],
   );
   const routeCoordinates = useMemo(
-    () => [...coordinates, DEFAULT_RESTAURANT.coordinates],
-    [coordinates],
+    () => [...coordinates, origin.coordinates],
+    [coordinates, origin],
   );
   const mappedOrders = useMemo(
     () => orders.filter((order) => order.address.coordinates),
@@ -78,9 +79,9 @@ export function OrderMap({ orders, showRoute = false }) {
           <Polyline coordinates={routeCoordinates} strokeColor={colors.deepGold} strokeWidth={4} />
         )}
         <Marker
-          coordinate={DEFAULT_RESTAURANT.coordinates}
+          coordinate={origin.coordinates}
           title="Ming House"
-          description={DEFAULT_RESTAURANT.formatted_address}
+          description={origin.formatted_address}
         >
           <View style={[styles.marker, styles.restaurantMarker]}>
             <Text style={styles.restaurantMarkerText}>R</Text>

@@ -1,7 +1,8 @@
 # Phase 7 Step 3: mobile address review
 
-Implemented 2026-10-16. Step 2 is committed as `205c651`. Step 3 is uncommitted
-for review. The required Expo SDK 57 documentation and `mobile/AGENTS.md` were
+Implemented 2026-10-16. Step 2 is committed as `205c651`; Step 3 as `fbf2f51`.
+The migration limitations below describe Step 3. [Step 4](phase-7-confirmed-locations.md)
+adds backend confirmation and persistence. The required Expo SDK 57 documentation and `mobile/AGENTS.md` were
 read before mobile code changes. No new dependency or Google key was added to
 the mobile app; existing receipt OCR and correction rules remain intact.
 

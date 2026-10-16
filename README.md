@@ -52,6 +52,7 @@ Interactive OpenAPI documentation is then available at
 `http://127.0.0.1:8000/docs`. The Phase 3 endpoints are:
 
 - `POST /addresses/validate`
+- `POST /addresses/confirm` (Google candidate confirmation; see [Step 4](docs/phase-7-confirmed-locations.md))
 - `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
   `PUT /orders/{order_id}`, and `DELETE /orders/{order_id}`
 - `POST /routes/optimize`

@@ -5,10 +5,11 @@ import { reviewedAddressLabel } from '../services/addressReview';
 import { AppButton } from '../components/AppButton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { OrderMap } from '../components/OrderMap';
+import { AddressReview } from '../components/AddressReview';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, error }) {
+export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, error, originReview, originReady = true, restaurant }) {
   const orderSummary = orders.length
     ? `${orders.length} confirmed order${orders.length === 1 ? '' : 's'} ready.`
     : 'No orders yet. Add a mock receipt to begin.';
@@ -18,7 +19,7 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
       <Text style={commonStyles.eyebrow}>ACTIVE RUN</Text>
       <Text style={commonStyles.title}>Scanned orders</Text>
       <Text style={commonStyles.subtitle}>{orderSummary}</Text>
-      <OrderMap orders={orders} />
+      <OrderMap orders={orders} restaurant={restaurant} />
       {orders.map((order, index) => (
         <View style={styles.orderCard} key={order.order_id}>
           <View style={styles.number}>
@@ -35,10 +36,15 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
       ))}
       {error && <ErrorMessage message={`${error} Check that the API is running at ${apiUrl}.`} />}
       <AppButton label="Add another receipt" onPress={onAdd} secondary />
+      {originReview && <View style={{ gap: 10 }}>
+        <Text style={commonStyles.cardTitle}>Restaurant starting location</Text>
+        <Text style={commonStyles.muted}>Check the starting location below. Submitting the route confirms this restaurant location.</Text>
+        <AddressReview review={originReview.review} onSelect={originReview.selectCandidate} onRetry={originReview.retry} />
+      </View>}
       <AppButton
         label="Submit and optimize route"
         onPress={onOptimize}
-        disabled={!orders.length || loading}
+        disabled={!orders.length || loading || !originReady}
       />
       {loading && <ActivityIndicator style={styles.loader} color={colors.deepGold} />}
     </ScrollView>

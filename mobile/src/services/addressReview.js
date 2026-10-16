@@ -35,25 +35,24 @@ export function updateDraftAddress(draft, value) {
 }
 
 export function reviewedAddressLabel(order) {
+  if (order.address.validated_location) return order.address.formatted_address;
   const candidate = selectedAddressCandidate(order.addressReview, order.address.formatted_address);
   if (!candidate) return order.address.formatted_address;
   return [candidate.normalized_address, order.address.unit].filter(Boolean).join(' · ');
 }
 
-export function confirmAddressForOrder(draft, review) {
+export function confirmAddressForOrder(draft, review, address) {
   const candidate = selectedAddressCandidate(review, draft.address.formatted_address);
-  if (!candidate) throw new Error('Check and select the current delivery address before confirming.');
-  return {
-    ...draft,
-    address: {
-      // Retain editable receipt text during migration. Backend reference/Place-ID
-      // consumption is Step 4/5; provider names in canonical text can be non-postal.
-      formatted_address: draft.address.formatted_address,
-      raw_address: draft.address.formatted_address,
-      coordinates: { ...candidate.coordinates }, unit: review.unit,
-    },
-    addressReview: { ...review, status: 'confirmed' },
-  };
+  const location = address?.validated_location;
+  if (!candidate || address?.raw_address !== draft.address.formatted_address
+    || location?.provider !== 'google' || location.place_id !== candidate.place_id
+    || !location.validation_reference || !(Date.parse(location.expires_at) > Date.now())
+    || address.unit !== review.unit
+    || address.coordinates?.latitude !== candidate.coordinates.latitude
+    || address.coordinates?.longitude !== candidate.coordinates.longitude) {
+    throw new Error('The server did not confirm the selected destination. Retry the address lookup.');
+  }
+  return { ...draft, address };
 }
 
 /** Generation checks protect against transports that finish even after abort. */
@@ -93,6 +92,7 @@ export function createAddressReviewController({ validate, onChange }) {
         const autoSelect = response.status === 'needs_confirmation' && eligible.length === 1 && !eligible[0].requires_review;
         publish({
           ...emptyAddressReview(input), status: response.status, candidates,
+          lookupReference: response.lookup_reference ?? null,
           selectedCandidateId: autoSelect ? eligible[0].candidate_id : null,
           unit: typeof response.unit === 'string' ? response.unit : null,
           warnings: Array.isArray(response.warnings) ? response.warnings.filter((item) => typeof item === 'string') : [],

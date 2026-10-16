@@ -74,9 +74,11 @@ class RouteOptimizationService:
         self,
         matrix_service: CoordinateTravelMatrixService | None = None,
         address_service: AddressValidationService | None = None,
+        location_validation=None,
     ):
         self.matrix_service = matrix_service or CoordinateTravelMatrixService()
         self.address_service = address_service
+        self.location_validation = location_validation
 
     def optimize(self, request: OptimizeRouteRequest) -> OptimizeRouteResponse:
         start = self._resolve_address(request.start)
@@ -119,6 +121,8 @@ class RouteOptimizationService:
         )
 
     def _resolve_address(self, address: Address) -> Address:
+        if self.location_validation is not None:
+            return self.location_validation.resolve(address)
         if self.address_service is None:
             return address
         result = self.address_service.validate(address.formatted_address)

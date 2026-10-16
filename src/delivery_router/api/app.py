@@ -14,7 +14,10 @@ from delivery_router.api.google_maps import (
     GoogleTravelMatrixService,
 )
 from delivery_router.api.repositories import InMemoryOrderRepository
+from delivery_router.api.location_validation import LocationValidation
 from delivery_router.api.schemas import (
+    Address,
+    AddressConfirmationRequest,
     AddressValidationRequest,
     AddressValidationResponse,
     ErrorResponse,
@@ -44,6 +47,7 @@ def create_app(
     )
     configured_key = settings.google_maps_api_key
     google_api_key = configured_key.get_secret_value() if configured_key else None
+    location_validation = LocationValidation(google_api_key) if google_api_key else None
     if settings.map_provider == "google":
         assert google_api_key is not None  # Settings rejects missing/blank credentials.
         google_client = GoogleMapsClient(
@@ -58,9 +62,11 @@ def create_app(
         route_service = route_service or RouteOptimizationService(
             matrix_service=GoogleTravelMatrixService(google_client),
             address_service=address_service,
+            location_validation=location_validation,
         )
     app = FastAPI(title="Delivery Route Optimizer API", version="0.1.0")
     app.state.map_provider = settings.map_provider
+    app.state.location_validation = location_validation
     logger.info("map_provider_selected provider=%s", settings.map_provider)
     app.state.orders = repository or InMemoryOrderRepository()
     app.state.address_service = address_service or AddressValidationService()
@@ -87,11 +93,21 @@ def create_app(
     @app.post("/addresses/validate", response_model=AddressValidationResponse)
     def validate_address(payload: AddressValidationRequest) -> AddressValidationResponse:
         if payload.context is not None:
-            return app.state.address_service.validate(payload.address, context=payload.context)
-        return app.state.address_service.validate(payload.address)
+            result = app.state.address_service.validate(payload.address, context=payload.context)
+        else:
+            result = app.state.address_service.validate(payload.address)
+        return location_validation.lookup(payload.address, result) if location_validation else result
+
+    @app.post("/addresses/confirm", response_model=Address)
+    def confirm_address(payload: AddressConfirmationRequest) -> Address:
+        if location_validation is None:
+            raise ApiError(503, "map_provider_configuration_error", "Google address confirmation is unavailable in development estimate mode")
+        return location_validation.confirm(payload)
 
     @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
     def create_order(payload: OrderCreate) -> OrderResponse:
+        if location_validation:
+            location_validation.resolve(payload.address)
         if app.state.orders.get(payload.order_id):
             raise ApiError(409, "order_exists", f"Order '{payload.order_id}' already exists")
         return app.state.orders.create(payload)
@@ -109,6 +125,8 @@ def create_app(
 
     @app.put("/orders/{order_id}", response_model=OrderResponse, responses={404: {"model": ErrorResponse}})
     def update_order(order_id: str, payload: OrderUpdate) -> OrderResponse:
+        if location_validation:
+            location_validation.resolve(payload.address)
         order = app.state.orders.update(order_id, payload)
         if order is None:
             raise ApiError(404, "order_not_found", f"Order '{order_id}' was not found")
@@ -122,6 +140,11 @@ def create_app(
 
     @app.post("/routes/optimize", response_model=OptimizeRouteResponse, responses={422: {"model": ErrorResponse}})
     def optimize_route(payload: OptimizeRouteRequest) -> OptimizeRouteResponse:
+        # Enforce the boundary even when a custom route service is injected.
+        if location_validation:
+            location_validation.resolve(payload.start)
+            for order in payload.orders:
+                location_validation.resolve(order.address)
         return app.state.route_service.optimize(payload)
 
     return app

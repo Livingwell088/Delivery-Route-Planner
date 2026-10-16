@@ -195,7 +195,9 @@ Open http://127.0.0.1:8002/docs, expand **POST /addresses/validate**, choose
 Do not leave Swagger's literal `"string"` values in the request. `context` is
 optional for a full address. Expect HTTP 200 with the matching Worcester
 candidate and `status: "needs_confirmation"`. `validated_location: null` remains
-expected until Step 4. This live lookup consumes Google usage.
+expected until the selected candidate is confirmed through `POST /addresses/confirm`.
+The lookup also returns `lookup_reference`; see [Step 4](phase-7-confirmed-locations.md)
+for the confirmation body. This live lookup consumes Google usage.
 
 For more address tests and expected results, see
 [Step 2 live address checks](phase-7-address-candidates.md). For mobile review,
@@ -287,7 +289,7 @@ Use committed synthetic fixtures, not private customer receipts, for shared test
 | Port 8002 or 8081 is occupied | Reuse the intended running process or stop it in its terminal with Ctrl+C. Do not kill unrelated processes. Keep configured ports consistent. |
 | Script execution policy blocks npm.ps1 | Use `npm.cmd` in place of `npm`; do not weaken machine-wide execution policy just to launch the app. |
 | Python activation script is blocked | Use `.\.venv\Scripts\python.exe` directly, as above. |
-| Map selection saves, but route rejects it | Step 4 server confirmation/reference support is still pending for ambiguous/conflicting selections. See Step 3's documented migration boundary. |
+| Route requires address confirmation | Restart the backend after updating to Step 4. Confirm the restaurant on Orders. Expired or changed destinations require a fresh lookup; remove and add an order again if its destination needs review. |
 
 To inspect listeners without stopping anything:
 
