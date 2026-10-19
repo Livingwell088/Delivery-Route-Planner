@@ -22,6 +22,7 @@ from delivery_router.api.schemas import (
     AddressValidationRequest,
     AddressValidationResponse,
     ErrorResponse,
+    EvaluateRouteRequest,
     OptimizeRouteRequest,
     OptimizeRouteResponse,
     OrderCreate,
@@ -150,14 +151,22 @@ def create_app(
             raise ApiError(404, "order_not_found", f"Order '{order_id}' was not found")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.post("/routes/optimize", response_model=OptimizeRouteResponse, responses={422: {"model": ErrorResponse}})
-    def optimize_route(payload: OptimizeRouteRequest) -> OptimizeRouteResponse:
+    def verify_route_locations(payload: OptimizeRouteRequest) -> None:
         # Enforce the boundary even when a custom route service is injected.
         if location_validation:
             location_validation.resolve(payload.start)
             for order in payload.orders:
                 location_validation.resolve(order.address)
+
+    @app.post("/routes/optimize", response_model=OptimizeRouteResponse, responses={422: {"model": ErrorResponse}})
+    def optimize_route(payload: OptimizeRouteRequest) -> OptimizeRouteResponse:
+        verify_route_locations(payload)
         return app.state.route_service.optimize(payload)
+
+    @app.post("/routes/evaluate", response_model=OptimizeRouteResponse, responses={422: {"model": ErrorResponse}})
+    def evaluate_route(payload: EvaluateRouteRequest) -> OptimizeRouteResponse:
+        verify_route_locations(payload)
+        return app.state.route_service.evaluate(payload)
 
     return app
 

@@ -60,7 +60,9 @@ export function completeRouteRequest(plan, ticket, route, calculatedAt = new Dat
     || (plan.requestMode === 'evaluate' && sequence.some((id, index) => id !== plan.sequence[index]))) {
     throw new Error('The calculated route does not match the requested stops.');
   }
-  return { ...plan, status: 'ready', route, calculatedAt,
+  return { ...plan, status: 'ready', route,
+    departureAt: route.departure_at ?? plan.departureAt,
+    calculatedAt: route.calculated_at ?? calculatedAt,
     sequence, sequenceSource: plan.requestMode === 'optimize' ? 'optimized' : plan.sequenceSource, error: null };
 }
 

@@ -1,5 +1,6 @@
 """Public request and response models for the HTTP API."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -140,12 +141,20 @@ class OrderUpdate(ApiModel):
 class RouteOrder(ApiModel):
     order_id: NonEmptyString
     address: Address
-    age_minutes: int = Field(ge=0)
+    age_minutes: int | None = Field(default=None, ge=0)
+    placed_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def require_order_time(self) -> "RouteOrder":
+        if self.age_minutes is None and self.placed_at is None:
+            raise ValueError("placed_at or age_minutes is required")
+        return self
 
 
 class OptimizeRouteRequest(ApiModel):
     start: Address
     orders: list[RouteOrder] = Field(min_length=1, max_length=8)
+    departure_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
     def require_unique_order_ids(self) -> "OptimizeRouteRequest":
@@ -154,6 +163,29 @@ class OptimizeRouteRequest(ApiModel):
             raise ValueError("order_id values must be unique")
         if "start" in ids:
             raise ValueError("order_id 'start' is reserved")
+        departure = self.departure_at.astimezone(timezone.utc)
+        for order in self.orders:
+            if order.placed_at is not None:
+                age = departure - order.placed_at.astimezone(timezone.utc)
+                if age < timedelta(0):
+                    raise ValueError("placed_at must not be after departure_at")
+                if order.age_minutes is not None and order.age_minutes != age // timedelta(minutes=1):
+                    raise ValueError("age_minutes must match placed_at at departure_at")
+            else:
+                try:
+                    departure - timedelta(minutes=order.age_minutes)
+                except OverflowError as exc:
+                    raise ValueError("age_minutes is outside the supported timestamp range") from exc
+        return self
+
+
+class EvaluateRouteRequest(OptimizeRouteRequest):
+    sequence: list[NonEmptyString] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def require_complete_sequence(self) -> "EvaluateRouteRequest":
+        if len(self.sequence) != len(self.orders) or set(self.sequence) != {order.order_id for order in self.orders}:
+            raise ValueError("sequence must contain every current order_id exactly once")
         return self
 
 
@@ -164,6 +196,11 @@ class OrderedStop(ApiModel):
     drive_minutes_from_start: int
     predicted_wait_minutes: int
     late_minutes: int
+    drive_minutes_from_previous_stop: int = Field(ge=0)
+    placed_at: AwareDatetime
+    arrival_at: AwareDatetime
+    predicted_order_age_minutes: int = Field(ge=0)
+    age_basis: Literal["placed_at", "age_minutes"]
 
 
 class OptimizeRouteResponse(ApiModel):
@@ -171,6 +208,14 @@ class OptimizeRouteResponse(ApiModel):
     total_drive_minutes: int
     score: float
     explanation: list[str]
+    start: Address
+    departure_at: AwareDatetime
+    calculated_at: AwareDatetime
+    return_drive_minutes: int = Field(ge=0)
+    return_at: AwareDatetime
+    route_mode: Literal["optimized", "evaluated"]
+    travel_time_basis: Literal["traffic_unaware", "development_estimate"]
+    stop_service_minutes: Literal[0] = 0
 
 
 class ErrorDetail(ApiModel):

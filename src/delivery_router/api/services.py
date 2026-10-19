@@ -1,5 +1,6 @@
 """Application services that adapt API data to the Phase 2 domain."""
 
+from datetime import datetime, timedelta, timezone
 from math import asin, cos, radians, sin, sqrt
 
 from delivery_router.api.errors import ApiError
@@ -7,11 +8,13 @@ from delivery_router.api.schemas import (
     Address,
     AddressContext,
     AddressValidationResponse,
+    EvaluateRouteRequest,
     OptimizeRouteRequest,
     OptimizeRouteResponse,
     OrderedStop,
 )
 from delivery_router.models import Order, TravelTimeMatrix
+from delivery_router.metrics import evaluate_route
 from delivery_router.scoring import ScoringConfig
 from delivery_router.strategies import compare_strategies
 
@@ -37,6 +40,7 @@ class CoordinateTravelMatrixService:
 
     average_speed_mph = 25.0
     road_distance_factor = 1.25
+    estimate_basis = "development_estimate"
 
     def build(self, locations: dict[str, Address]) -> TravelTimeMatrix:
         missing = [key for key, value in locations.items() if value.coordinates is None]
@@ -81,6 +85,18 @@ class RouteOptimizationService:
         self.location_validation = location_validation
 
     def optimize(self, request: OptimizeRouteRequest) -> OptimizeRouteResponse:
+        return self._calculate(request)
+
+    def evaluate(self, request: EvaluateRouteRequest) -> OptimizeRouteResponse:
+        return self._calculate(request, sequence=request.sequence)
+
+    def _calculate(self, request: OptimizeRouteRequest, sequence: list[str] | None = None) -> OptimizeRouteResponse:
+        departure = request.departure_at.astimezone(timezone.utc)
+        placed_by_order = {
+            order.order_id: order.placed_at.astimezone(timezone.utc) if order.placed_at is not None
+            else departure - timedelta(minutes=order.age_minutes)
+            for order in request.orders
+        }
         start = self._resolve_address(request.start)
         address_by_order = {
             order.order_id: self._resolve_address(order.address)
@@ -89,13 +105,36 @@ class RouteOptimizationService:
         locations = {"start": start, **address_by_order}
         matrix = self.matrix_service.build(locations)
         orders = tuple(
-            Order(order_id=order.order_id, stop_id=order.order_id, age_minutes=order.age_minutes)
+            Order(order_id=order.order_id, stop_id=order.order_id,
+                  age_minutes=(departure - placed_by_order[order.order_id]) // timedelta(minutes=1))
             for order in request.orders
         )
-        comparison = compare_strategies("start", orders, matrix, ScoringConfig())
-        selected = comparison["age_aware"]
-        shortest = comparison["shortest_route"]
-        oldest = comparison["oldest_order_first"]
+        if sequence is None:
+            comparison = compare_strategies("start", orders, matrix, ScoringConfig())
+            selected = comparison["age_aware"]
+            shortest = comparison["shortest_route"]
+            oldest = comparison["oldest_order_first"]
+            explanation = [
+                f"Selected order: {' -> '.join(selected.order_sequence)}.",
+                f"Age-aware score {selected.score:.1f}; shortest-route score {shortest.score:.1f}; oldest-first score {oldest.score:.1f}.",
+                f"The route predicts {selected.total_late_minutes} total minute(s) beyond the lateness threshold.",
+            ]
+        else:
+            by_id = {order.order_id: order for order in orders}
+            selected = evaluate_route("start", tuple(by_id[key] for key in sequence), matrix, ScoringConfig())
+            explanation = [
+                f"Driver-selected order: {' -> '.join(selected.order_sequence)}.",
+                "Calculated this exact stop order without optimizing or replacing it.",
+                f"The route predicts {selected.total_late_minutes} total minute(s) beyond the lateness threshold.",
+            ]
+
+        try:
+            arrivals = {delivery.order.order_id: departure + timedelta(minutes=delivery.elapsed_minutes)
+                        for delivery in selected.deliveries}
+            return_at = departure + timedelta(minutes=selected.total_driving_minutes)
+        except OverflowError as exc:
+            raise ApiError(422, "route_timing_out_of_range", "Route timing exceeds the supported timestamp range.") from exc
+        age_basis = {order.order_id: "placed_at" if order.placed_at is not None else "age_minutes" for order in request.orders}
 
         stops = [
             OrderedStop(
@@ -105,19 +144,27 @@ class RouteOptimizationService:
                 drive_minutes_from_start=delivery.elapsed_minutes,
                 predicted_wait_minutes=delivery.wait_minutes,
                 late_minutes=delivery.late_minutes,
+                drive_minutes_from_previous_stop=delivery.elapsed_minutes - (
+                    selected.deliveries[index - 2].elapsed_minutes if index > 1 else 0),
+                placed_at=placed_by_order[delivery.order.order_id],
+                arrival_at=arrivals[delivery.order.order_id],
+                predicted_order_age_minutes=delivery.wait_minutes,
+                age_basis=age_basis[delivery.order.order_id],
             )
             for index, delivery in enumerate(selected.deliveries, start=1)
-        ]
-        explanation = [
-            f"Selected order: {' -> '.join(selected.order_sequence)}.",
-            f"Age-aware score {selected.score:.1f}; shortest-route score {shortest.score:.1f}; oldest-first score {oldest.score:.1f}.",
-            f"The route predicts {selected.total_late_minutes} total minute(s) beyond the lateness threshold.",
         ]
         return OptimizeRouteResponse(
             ordered_stops=stops,
             total_drive_minutes=selected.total_driving_minutes,
             score=selected.score,
             explanation=explanation,
+            start=start,
+            departure_at=departure,
+            calculated_at=datetime.now(timezone.utc),
+            return_drive_minutes=selected.total_driving_minutes - selected.deliveries[-1].elapsed_minutes,
+            return_at=return_at,
+            route_mode="optimized" if sequence is None else "evaluated",
+            travel_time_basis=getattr(self.matrix_service, "estimate_basis", "development_estimate"),
         )
 
     def _resolve_address(self, address: Address) -> Address:

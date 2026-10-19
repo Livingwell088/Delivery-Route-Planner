@@ -226,6 +226,8 @@ class GoogleAddressValidationService:
 class GoogleTravelMatrixService:
     """Build directed road times from locations already verified by the API gate."""
 
+    estimate_basis = "traffic_unaware"
+
     def __init__(self, client: GoogleMapsClient) -> None:
         self.client = client
 

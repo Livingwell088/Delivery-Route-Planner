@@ -100,7 +100,10 @@ def test_google_api_confirmation_and_gate_before_route_service():
         calls = 0
         def optimize(self, request):
             self.calls += 1
-            return {"ordered_stops": [], "total_drive_minutes": 0, "score": 0, "explanation": []}
+            return {"ordered_stops": [], "total_drive_minutes": 0, "score": 0, "explanation": [],
+                    "start": request.start, "departure_at": request.departure_at, "calculated_at": request.departure_at,
+                    "return_drive_minutes": 0, "return_at": request.departure_at,
+                    "route_mode": "optimized", "travel_time_basis": "traffic_unaware"}
     routes = RouteSpy()
     client = TestClient(create_app(google_api_key="test", address_service=provider, route_service=routes))
     lookup = client.post("/addresses/validate", json={"address": RAW}).json()

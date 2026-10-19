@@ -1,6 +1,6 @@
 # Phase 8 Step 1: Route state and timing contract
 
-Implemented on branch `endtoend`; not committed. This step establishes the mobile
+Step 1 is committed as `b469239` on branch `endtoend`. This step establishes the mobile
 route lifecycle. Clock arrival times, fixed-sequence backend evaluation, rescan
 replacement, and visible reorder controls belong to subsequent steps.
 
@@ -43,7 +43,8 @@ Step 5 exposes manual controls. No dispatcher or multi-driver behavior is added.
 One ISO departure timestamp is captured after location preparation and immediately
 before route submission. Every submitted integer order age uses that timestamp,
 not separate clock reads. The response's receipt time is recorded separately.
-The current API still receives integer ages; Step 2 will extend its timing fields.
+At Step 1 the API received integer ages; [Step 2](phase-8-route-timing.md) extends
+the contract with placed timestamps and authoritative arrival/return fields.
 
 Driving durations use Google's existing traffic-unaware matrix. The modeled route
 starts at the confirmed restaurant, includes return to that restaurant, and
