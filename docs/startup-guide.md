@@ -341,9 +341,13 @@ Get-NetTCPConnection -LocalPort 8002,8081 -State Listen -ErrorAction SilentlyCon
 ## Shutdown and saved state
 
 Press **Ctrl+C** in the backend and Metro terminals. Close the emulator when
-finished. App orders and receipt fingerprints are currently session-scoped;
-a full app restart clears them. The navigation preference persists. Backend
-order CRUD storage is also in memory and resets with the backend.
+finished. Confirmed app orders and receipt fingerprints persist locally within
+the existing eight-hour session/location validity rules. Valid stop-sequence
+preferences also persist; calculated route estimates do not. After an app
+restart, confirm the restaurant and calculate a fresh route. Expired or invalid
+sessions are cleared with a notice. The navigation preference persists. Backend
+order CRUD storage is in memory and resets with the backend; it is separate
+from the mobile active run. See [Phase 8 route state](phase-8-route-state.md).
 
 Development-provider mode is for backend estimates/tests only. It cannot satisfy
 the new mobile Google candidate-review requirement. Google live lookups and

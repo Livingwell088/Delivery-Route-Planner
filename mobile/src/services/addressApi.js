@@ -50,11 +50,12 @@ export function confirmAddress(address, lookupReference, candidateId, options = 
 }
 
 /** Refresh only an unchanged, unambiguous destination; changed results need review. */
-export async function ensureConfirmedAddress(address, { validate = validateAddress, confirm = confirmAddress, now = Date.now(), force = false } = {}) {
+export async function ensureConfirmedAddress(address, { validate = validateAddress, confirm = confirmAddress, now = Date.now(), force = false, signal } = {}) {
   const location = address.validated_location;
   if (!force && location?.validation_reference && Date.parse(location.expires_at) > now) return address;
   const input = address.raw_address || address.formatted_address;
-  const result = await validate(input);
+  const result = await validate(input, { signal });
+  if (signal?.aborted) throw new Error('Address refresh canceled.');
   const candidates = result.candidates?.filter((c) => c.is_usable) ?? [];
   const candidate = candidates[0];
   if (candidates.length !== 1 || candidate.requires_review || !result.lookup_reference
@@ -62,5 +63,5 @@ export async function ensureConfirmedAddress(address, { validate = validateAddre
     || (address.unit ?? null) !== (result.unit ?? null)) {
     throw new Error('The destination needs review. Remove and add this order again, or check the configured restaurant address.');
   }
-  return confirm(input, result.lookup_reference, candidate.candidate_id);
+  return confirm(input, result.lookup_reference, candidate.candidate_id, { signal });
 }

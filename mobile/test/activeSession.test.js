@@ -44,6 +44,26 @@ test('ordered storage writes preserve removal and recover after a failed write',
   assert.deepEqual(writes, ['failed', 'added', 'removed']);
 });
 
+test('restore a sequence preference without restoring route estimates or losing legacy sessions', () => {
+  const orders = [order, { ...order, order_id: '2' }];
+  const text = encodeActiveSession(orders, ['fp'], now, {
+    sequence: ['2', '1'], source: 'manual', route: { private: 'old estimate' }, departureAt: 'old',
+  });
+  const restored = decodeActiveSession(text, now);
+  assert.deepEqual(restored.routePreference, { sequence: ['2', '1'], source: 'manual' });
+  assert.equal(text.includes('old estimate'), false);
+  assert.equal(text.includes('departureAt'), false);
+  const legacy = decodeActiveSession(encodeActiveSession(orders, ['fp'], now), now);
+  assert.equal(legacy.orders.length, 2);
+  assert.equal(legacy.routePreference, undefined);
+  for (const sequence of [['1', '1'], ['1'], ['1', 'unknown']]) {
+    const corrupted = JSON.stringify({ ...JSON.parse(text), routePreference: { sequence, source: 'manual' } });
+    const recovered = decodeActiveSession(corrupted, now);
+    assert.equal(recovered.orders.length, 2);
+    assert.equal(recovered.routePreference, undefined);
+  }
+});
+
 test('confirmation submits only address, selected candidate and lookup reference to backend', async () => {
   const result = await confirmAddress('raw', 'lookup', 'candidate', { fetchImpl: async (url, request) => {
     assert.ok(url.endsWith('/addresses/confirm'));
@@ -84,4 +104,17 @@ test('refresh never silently substitutes a different, ambiguous or review-requir
       confirm: async () => assert.fail('Must not confirm'),
     }), /needs review/);
   }
+});
+
+test('canceling address refresh forwards the signal and prevents confirmation even if lookup ignores abort', async () => {
+  const controller = new AbortController();
+  await assert.rejects(ensureConfirmedAddress(address, {
+    force: true, signal: controller.signal,
+    validate: async (raw, { signal }) => {
+      assert.equal(signal, controller.signal);
+      controller.abort();
+      return { candidates: [{ is_usable: true, requires_review: false, place_id: 'a' }], lookup_reference: 'lookup' };
+    },
+    confirm: () => assert.fail('Canceled lookup must never confirm'),
+  }), /canceled/);
 });

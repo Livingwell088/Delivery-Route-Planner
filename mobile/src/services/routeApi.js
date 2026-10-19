@@ -1,12 +1,14 @@
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '');
 
-function ageInMinutes(placedAt) {
-  return Math.max(0, Math.floor((Date.now() - new Date(placedAt).getTime()) / 60_000));
+function ageInMinutes(placedAt, departureTime) {
+  return Math.max(0, Math.floor((departureTime - new Date(placedAt).getTime()) / 60_000));
 }
 
 export async function optimizeRoute(start, orders, {
-  fetchImpl = globalThis.fetch, signal, timeoutMs = 35_000,
+  fetchImpl = globalThis.fetch, signal, timeoutMs = 35_000, departureAt = new Date().toISOString(),
 } = {}) {
+  const departureTime = Date.parse(departureAt);
+  if (!Number.isFinite(departureTime)) throw new Error('Invalid route departure time.');
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) controller.abort();
@@ -23,7 +25,7 @@ export async function optimizeRoute(start, orders, {
         orders: orders.map((order) => ({
           order_id: order.order_id,
           address: order.address,
-          age_minutes: ageInMinutes(order.placedAt),
+          age_minutes: ageInMinutes(order.placedAt, departureTime),
         })),
       }),
     });

@@ -8,7 +8,7 @@ import { AddressReview } from '../components/AddressReview';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, error, originReview, originReady = true, restaurant }) {
+export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, error, originReview, originReady = true, restaurant, routeStatus, onReviewRoute }) {
   const orderSummary = orders.length
     ? `${orders.length} confirmed order${orders.length === 1 ? '' : 's'} ready.`
     : 'No orders yet. Add a mock receipt to begin.';
@@ -35,6 +35,10 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
       ))}
       {error && <ErrorMessage message={error} />}
       <AppButton label="Add another receipt" onPress={onAdd} secondary />
+      {routeStatus === 'needs_calculation' && <Text style={commonStyles.muted}>
+        Calculate the route for these orders before opening navigation.
+      </Text>}
+      {routeStatus === 'ready' && <AppButton label="Review calculated route" onPress={onReviewRoute} secondary />}
       {originReview && <View style={{ gap: 10 }}>
         <Text style={commonStyles.cardTitle}>Restaurant starting location</Text>
         <Text style={commonStyles.muted}>Check the starting location below. Submitting the route confirms this restaurant location.</Text>

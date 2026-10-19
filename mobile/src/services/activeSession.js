@@ -1,3 +1,5 @@
+import { validSequence } from './routePlan.js';
+
 export const ACTIVE_SESSION_KEY = 'active-deliveries-v1';
 const MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
@@ -14,10 +16,14 @@ function validAddress(address, now) {
     && Date.parse(location.expires_at) > now;
 }
 
-export function encodeActiveSession(orders, fingerprints, now = Date.now()) {
+export function encodeActiveSession(orders, fingerprints, now = Date.now(), routePreference = null) {
   return JSON.stringify({ version: 1, savedAt: now,
     orders: orders.map(({ order_id, address, placedAt, receiptFingerprints = [] }) => ({ order_id, address, placedAt, receiptFingerprints })),
     fingerprints,
+    ...(routePreference && validSequence(routePreference.sequence, orders)
+      && ['manual', 'optimized'].includes(routePreference.source) ? { routePreference: {
+        sequence: routePreference.sequence, source: routePreference.source,
+      } } : {}),
   });
 }
 
@@ -36,7 +42,13 @@ export function decodeActiveSession(text, now = Date.now()) {
         || o.receiptFingerprints.some((f) => typeof f !== 'string'))) {
       throw new Error('Expired or incompatible session');
     }
-    return { orders: data.orders, fingerprints: data.fingerprints };
+    // An incompatible preference must not discard otherwise valid active orders.
+    const preference = data.routePreference;
+    return { orders: data.orders, fingerprints: data.fingerprints,
+      ...(preference && validSequence(preference.sequence, data.orders)
+        && ['manual', 'optimized'].includes(preference.source)
+        ? { routePreference: { sequence: preference.sequence, source: preference.source } } : {}),
+    };
   } catch {
     return { orders: [], fingerprints: [], discarded: true };
   }

@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, SafeAreaView, StyleSheet } from 'react-native';
+import { Alert, Linking, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Header } from './components/Header';
+import { AppButton } from './components/AppButton';
 import { NAVIGATION_PREFERENCE_KEY } from './constants/storage';
 import { DEFAULT_RESTAURANT, mockReceipt } from './data/mockReceipts';
 import { useAddressReview } from './hooks/useAddressReview';
@@ -22,12 +23,26 @@ import { addressReviewError, selectedAddressCandidate, confirmAddressForOrder } 
 import { confirmAddress, ensureConfirmedAddress } from './services/addressApi';
 import { ACTIVE_SESSION_KEY, createSessionWriter, decodeActiveSession, encodeActiveSession } from './services/activeSession';
 import { colors } from './theme/colors';
+import { createRoutePlan, changeRouteInputs, beginRouteRequest, isCurrentRouteRequest,
+  prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest, canNavigateRoute } from './services/routePlan';
 
 export default function App() {
   const [screen, setScreen] = useState('home');
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrdersState] = useState([]);
   const [draft, setDraft] = useState(null);
-  const [route, setRoute] = useState(null);
+  const [routePlan, setRoutePlan] = useState(createRoutePlan);
+  const planRef = useRef(routePlan);
+  const ordersRef = useRef([]);
+  const restaurantRef = useRef(null);
+  const routeAbort = useRef(null);
+  const route = routePlan.route;
+  const updatePlan = (next) => { planRef.current = next; setRoutePlan(next); };
+  const setOrders = (value, preference) => {
+    const next = typeof value === 'function' ? value(ordersRef.current) : value;
+    ordersRef.current = next;
+    updatePlan(changeRouteInputs(planRef.current, next, restaurantRef.current, preference));
+    setOrdersState(next);
+  };
   const [navigationApp, setNavigationApp] = useState('google');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -37,7 +52,12 @@ export default function App() {
   const mockIndex = useRef(0);
   const busy = useRef(false);
   const [hydrated, setHydrated] = useState(false);
-  const [restaurant, setRestaurant] = useState(null);
+  const [restaurant, setRestaurantState] = useState(null);
+  const setRestaurant = (value) => {
+    restaurantRef.current = value;
+    updatePlan(changeRouteInputs(planRef.current, ordersRef.current, value));
+    setRestaurantState(value);
+  };
   const [revalidateAll, setRevalidateAll] = useState(false);
   const writeSession = useRef(createSessionWriter(AsyncStorage));
   const needsRestaurant = !restaurant || Date.parse(restaurant.validated_location.expires_at) <= Date.now();
@@ -49,7 +69,7 @@ export default function App() {
     AsyncStorage.getItem(ACTIVE_SESSION_KEY).then((text) => {
       if (!active) return;
       const restored = decodeActiveSession(text);
-      setOrders(restored.orders);
+      setOrders(restored.orders, restored.routePreference);
       setAcceptedReceiptFingerprints(restored.fingerprints);
       if (restored.orders.length) setScreen('orders');
       if (restored.discarded) Alert.alert('Previous run cleared', 'The saved delivery run expired or could not be restored. Scan the current orders again.');
@@ -61,10 +81,17 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    writeSession.current(encodeActiveSession(orders, acceptedReceiptFingerprints)).catch(() => {
+    writeSession.current(encodeActiveSession(orders, acceptedReceiptFingerprints, Date.now(), {
+      sequence: routePlan.sequence, source: routePlan.sequenceSource,
+    })).catch(() => {
       Alert.alert('Orders not saved', 'This run is available now, but could not be saved for an app restart.');
     });
-  }, [orders, acceptedReceiptFingerprints, hydrated]);
+  }, [orders, acceptedReceiptFingerprints, hydrated, routePlan.sequence, routePlan.sequenceSource]);
+
+  useEffect(() => () => {
+    routeAbort.current?.abort();
+    routeAbort.current = null;
+  }, []);
   const { review: addressReview, selectCandidate, retry: retryAddress } = useAddressReview(
     draft?.address.formatted_address ?? '', screen === 'confirm' && Boolean(draft),
   );
@@ -133,7 +160,6 @@ export default function App() {
       setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
       setOrders((current) => [...current, { ...confirmedOrder, receiptFingerprints: [fingerprint, originalFingerprint].filter(Boolean) }]);
       setDraft(null);
-      setRoute(null);
       setError(null);
       setScreen('orders');
     } catch (caught) {
@@ -150,24 +176,41 @@ export default function App() {
     busy.current = true;
     setLoading(true);
     setError(null);
+    updatePlan(beginRouteRequest(planRef.current));
+    const ticket = { requestId: planRef.current.requestId, revision: planRef.current.revision };
+    const controller = new AbortController();
+    routeAbort.current = controller;
+    const current = () => !controller.signal.aborted && isCurrentRouteRequest(planRef.current, ticket);
     try {
       let origin = restaurant;
       if (needsRestaurant) {
         const selected = selectedAddressCandidate(originReview.review, DEFAULT_RESTAURANT.formatted_address);
         if (!selected || !originReview.review.lookupReference) throw new Error('Check and select the restaurant starting location below.');
         origin = await confirmAddress(DEFAULT_RESTAURANT.formatted_address,
-          originReview.review.lookupReference, selected.candidate_id);
-        setRestaurant(origin);
+          originReview.review.lookupReference, selected.candidate_id, { signal: controller.signal });
+        if (!current()) return;
       }
       const currentOrders = [];
       for (const order of orders) {
-        currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll }) });
+        currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll, signal: controller.signal }) });
+        if (!current()) return;
       }
-      setOrders(currentOrders);
-      setRoute(await optimizeRoute(origin, currentOrders));
+      if (!current()) return;
+      const departureAt = new Date().toISOString();
+      updatePlan(prepareRouteRequest(planRef.current, ticket, currentOrders, origin, departureAt));
+      // These are confirmations obtained by this request, not a new driver edit.
+      ordersRef.current = currentOrders;
+      restaurantRef.current = origin;
+      setOrdersState(currentOrders);
+      setRestaurantState(origin);
+      const result = await optimizeRoute(origin, currentOrders, { departureAt, signal: controller.signal });
+      if (!current()) return;
+      updatePlan(completeRouteRequest(planRef.current, ticket, result));
       setRevalidateAll(false);
       setScreen('route');
     } catch (caught) {
+      if (!current()) return;
+      updatePlan(failRouteRequest(planRef.current, ticket, caught instanceof Error ? caught.message : 'Unable to optimize this route.'));
       if (needsRestaurant && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
       if (caught?.code === 'location_review_required') {
         setRestaurant(null);
@@ -175,8 +218,11 @@ export default function App() {
       }
       setError(caught instanceof Error ? caught.message : 'Unable to optimize this route.');
     } finally {
-      busy.current = false;
-      setLoading(false);
+      if (routeAbort.current === controller) {
+        routeAbort.current = null;
+        busy.current = false;
+        setLoading(false);
+      }
     }
   };
 
@@ -190,7 +236,6 @@ export default function App() {
           const remaining = orders.filter((order) => order.order_id !== orderId);
           setOrders(remaining);
           setAcceptedReceiptFingerprints([...new Set(remaining.flatMap((order) => order.receiptFingerprints ?? []))]);
-          setRoute(null);
         },
       },
     ]);
@@ -202,7 +247,11 @@ export default function App() {
   };
 
   const openRoute = async () => {
-    const navigationRoute = createNavigationRoute(navigationApp, route?.ordered_stops ?? [], restaurant ?? DEFAULT_RESTAURANT);
+    if (!canNavigateRoute(planRef.current, ordersRef.current, restaurantRef.current)) {
+      Alert.alert('Route needs recalculation', 'Review your current orders and calculate the route again before opening navigation.');
+      return;
+    }
+    const navigationRoute = createNavigationRoute(navigationApp, planRef.current.route.ordered_stops, restaurantRef.current);
     if (!navigationRoute) return;
 
     if (!navigationRoute.includesAllStops) {
@@ -215,7 +264,8 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} pointerEvents={loading || !hydrated ? 'none' : 'auto'}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea} pointerEvents={loading || !hydrated ? 'none' : 'auto'}>
       <StatusBar style="dark" />
       <Header screen={screen} onNavigate={(next) => { if (!busy.current && hydrated) setScreen(next); }} orderCount={orders.length} />
       {screen === 'home' && (
@@ -267,21 +317,34 @@ export default function App() {
           onAdd={() => setScreen('home')}
           onRemove={removeOrder}
           onOptimize={requestRoute}
+          routeStatus={routePlan.status}
+          onReviewRoute={() => setScreen('route')}
           loading={loading}
           error={error}
         />
       )}
-      {screen === 'route' && route && (
+      {screen === 'route' && (
         <RouteScreen
           route={route}
           restaurant={restaurant}
           navigationApp={navigationApp}
           onNavigate={openRoute}
+          plan={routePlan}
+          onReviewOrders={() => setScreen('orders')}
         />
       )}
       {screen === 'settings' && (
         <SettingsScreen value={navigationApp} onChange={saveNavigationApp} />
       )}
+      </View>
+      {routePlan.status === 'calculating' && <AppButton label="Cancel route calculation" onPress={() => {
+        updatePlan(cancelRouteRequest(planRef.current));
+        routeAbort.current?.abort();
+        routeAbort.current = null;
+        busy.current = false;
+        setLoading(false);
+        setError(null);
+      }} secondary />}
     </SafeAreaView>
   );
 }

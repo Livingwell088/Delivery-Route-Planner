@@ -29,6 +29,21 @@ test('budget and tracking errors preserve structured codes and explain recovery'
   }
 });
 
+test('every order age uses the same explicit departure timestamp even when the clock advances', async () => {
+  const departureAt = '2026-10-19T22:00:00Z';
+  const timedOrders = [
+    { ...orders[0], placedAt: '2026-10-19T21:30:00Z' },
+    { ...orders[0], order_id: 'B', placedAt: '2026-10-19T21:45:00Z' },
+  ];
+  await optimizeRoute(address, timedOrders, { departureAt, fetchImpl: async (url, request) => {
+    assert.deepEqual(JSON.parse(request.body).orders.map((order) => order.age_minutes), [30, 15]);
+    return response({ ...route, ordered_stops: timedOrders.map((order) => ({ ...order })) });
+  } });
+  await assert.rejects(optimizeRoute(address, timedOrders, { departureAt: 'invalid',
+    fetchImpl: () => assert.fail('Invalid departure must not make a request'),
+  }), /Invalid route departure/);
+});
+
 test('route timeout aborts the request without retrying', async () => {
   let calls = 0;
   const fetchImpl = (url, { signal }) => new Promise((resolve, reject) => {
