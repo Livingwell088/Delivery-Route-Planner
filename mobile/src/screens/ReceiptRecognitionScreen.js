@@ -16,6 +16,7 @@ export function ReceiptRecognitionScreen({
   onComplete,
   onRetake,
   onManual,
+  replacementOrderId = null,
 }) {
   const [status, setStatus] = useState(RECEIPT_SCAN_STATUS.PROCESSING);
   const [result, setResult] = useState(null);
@@ -61,6 +62,8 @@ export function ReceiptRecognitionScreen({
         <ActivityIndicator color={colors.deepGold} size="large" />
         <Text style={styles.heading}>Reading receipt…</Text>
         <Text style={commonStyles.muted}>Recognizing text on this device.</Text>
+        {replacementOrderId !== null && <Text style={commonStyles.muted}>Order #{replacementOrderId} is kept until you confirm its replacement.</Text>}
+        <AppButton label="Cancel" onPress={onCancel} secondary />
       </View>
     );
   }
@@ -87,6 +90,7 @@ export function ReceiptRecognitionScreen({
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={commonStyles.eyebrow}>OCR RESULT</Text>
       <Text style={commonStyles.title}>Recognized text</Text>
+      {replacementOrderId !== null && <Text style={commonStyles.subtitle}>Rescanning order #{replacementOrderId}. The original stays in your run until replacement is confirmed.</Text>}
       <Text style={commonStyles.subtitle}>
         ML Kit found {result.blocks.length} text {result.blocks.length === 1 ? 'block' : 'blocks'}.
       </Text>

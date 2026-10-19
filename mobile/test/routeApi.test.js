@@ -88,6 +88,21 @@ test('location-review errors keep their code for the existing revalidation flow'
   } }, false, 422) }), (error) => error.code === 'location_review_required' && error.message === 'Confirm again');
 });
 
+test('old backend contract errors explain restarting without mislabeling other validation failures', async () => {
+  for (const detail of [
+    { type: 'missing', loc: ['body', 'orders', 0, 'age_minutes'] },
+    { type: 'extra_forbidden', loc: ['body', 'departure_at'] },
+    { type: 'extra_forbidden', loc: ['body', 'orders', 0, 'placed_at'] },
+  ]) {
+    await assert.rejects(optimizeRoute(address, orders, { fetchImpl: async () => response({ error: {
+      code: 'validation_error', message: 'Request validation failed', details: [detail],
+    } }, false, 422) }), (error) => error.code === 'validation_error' && /Restart the backend/.test(error.message));
+  }
+  await assert.rejects(optimizeRoute(address, orders, { fetchImpl: async () => response({ error: {
+    code: 'validation_error', message: 'Request validation failed', details: [{ type: 'value_error', loc: ['body'] }],
+  } }, false, 422) }), /Request validation failed/);
+});
+
 test('fixed-sequence evaluation selects its endpoint, retains stop order, and shares timeout behavior', async () => {
   const original = structuredClone(orders);
   const result = await evaluateRoute(address, orders, ['A'], { fetchImpl: async (url, request) => {

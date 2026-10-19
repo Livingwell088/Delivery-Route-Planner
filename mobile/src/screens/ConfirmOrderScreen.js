@@ -12,7 +12,8 @@ import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
 export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRetryAddress,
-  onChange, onSave, error, onCancel, onRetake, saving = false }) {
+  onChange, onSave, error, onCancel, onRetake, saving = false, replacementOrderId = null }) {
+  const replacing = replacementOrderId !== null;
   const isOcrDraft = draft.source === 'receipt-ocr';
   const review = draft.receiptReview;
   const receiptError = validateReceiptDraft(draft);
@@ -28,9 +29,10 @@ export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRe
   return (
     <ScrollView contentContainerStyle={commonStyles.content} keyboardShouldPersistTaps="handled">
       <Text style={commonStyles.eyebrow}>{isOcrDraft ? 'RECEIPT REVIEW' : 'MOCK EXTRACTION COMPLETE'}</Text>
-      <Text style={commonStyles.title}>Confirm order</Text>
+      <Text style={commonStyles.title}>{replacing ? `Replace order #${replacementOrderId}` : 'Confirm order'}</Text>
       <Text style={commonStyles.subtitle}>
-        Compare every value with the physical receipt before adding it.
+        {replacing ? 'The original order stays in your run until you confirm this replacement. Review the new order number, address, unit and placed time.'
+          : 'Compare every value with the physical receipt before adding it.'}
       </Text>
       {review && (
         <Text style={commonStyles.subtitle}>
@@ -61,13 +63,15 @@ export function ConfirmOrderScreen({ draft, addressReview, onSelectAddress, onRe
       <AddressReview review={addressReview} onSelect={onSelectAddress} onRetry={onRetryAddress} />
       <View style={styles.successBox}>
         <Text style={styles.successText}>
-          Check all details against the receipt, including the recognized destination and every suite, room or unit. Confirming adds the order and confirms your selected location.
+          Check all details against the receipt, including the recognized destination and every suite, room or unit. {replacing
+            ? `Confirming replaces order #${replacementOrderId} in its existing position and confirms your selected location.`
+            : 'Confirming adds the order and confirms your selected location.'}
         </Text>
       </View>
       {receiptError && <Text style={commonStyles.muted}>{receiptError}</Text>}
       {!receiptError && locationError && addressReview.status !== 'error' && <Text style={commonStyles.muted}>{locationError}</Text>}
       {error && <ErrorMessage message={error} />}
-      <AppButton label={saving ? 'Confirming…' : 'Confirm and add order'} onPress={onSave} disabled={Boolean(saving || receiptError || locationError)} />
+      <AppButton label={saving ? 'Confirming…' : replacing ? 'Confirm and replace order' : 'Confirm and add order'} onPress={onSave} disabled={Boolean(saving || receiptError || locationError)} />
       {isOcrDraft && <AppButton label="Rescan" onPress={onRetake} secondary />}
       <AppButton label="Cancel" onPress={onCancel} secondary />
     </ScrollView>

@@ -6,7 +6,7 @@ import { AppButton } from '../components/AppButton';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 
-export function HomeScreen({ capturedReceipt, receiptScanResult, onMock, onScan }) {
+export function HomeScreen({ capturedReceipt, receiptScanResult, onMock, onScan, atCapacity = false }) {
   const [locationStatus, setLocationStatus] = useState('not requested');
   const [testMode, setTestMode] = useState(false);
 
@@ -33,7 +33,8 @@ export function HomeScreen({ capturedReceipt, receiptScanResult, onMock, onScan 
           </View>
         )}
       </View>
-      <AppButton label={testMode ? 'Add mock receipt' : 'Scan receipt'} onPress={testMode ? onMock : onScan} />
+      <AppButton label={testMode ? 'Add mock receipt' : 'Scan receipt'} onPress={testMode ? onMock : onScan} disabled={atCapacity} />
+      {atCapacity && <Text style={commonStyles.muted}>This run has eight orders. Open Orders to remove or rescan one.</Text>}
       <View style={styles.testModeRow}>
         <View style={styles.testModeCopy}>
           <Text style={commonStyles.cardTitle}>Test mode</Text>

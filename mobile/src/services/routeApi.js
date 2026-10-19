@@ -81,6 +81,12 @@ async function requestRoute(start, orders, sequence, {
 
     const body = await response.json();
     if (!response.ok) {
+      const details = body?.error?.details;
+      const outdatedContract = body?.error?.code === 'validation_error' && Array.isArray(details)
+        && details.some((detail) => Array.isArray(detail.loc) && (
+          (detail.type === 'missing' && detail.loc.at(-1) === 'age_minutes')
+          || (detail.type === 'extra_forbidden' && ['placed_at', 'departure_at'].includes(detail.loc.at(-1)))
+        ));
       const messages = {
         map_usage_limit_reached: 'This app has reached its Google usage allowance. Your orders are saved; contact the administrator before retrying.',
         map_usage_unavailable: 'Google usage tracking is unavailable. Your orders are saved; ask the administrator to check the backend.',
@@ -88,7 +94,9 @@ async function requestRoute(start, orders, sequence, {
         map_provider_rate_limited: 'Google route planning has reached its usage limit. Your orders are saved; try again later.',
         map_provider_unavailable: 'Google route planning is temporarily unavailable. Your orders are saved; try again.',
       };
-      const error = new Error(messages[body?.error?.code] ?? body?.error?.message ?? `Route request failed (${response.status})`);
+      const error = new Error(outdatedContract
+        ? 'The backend is running an older route API. Restart the backend to load the updated code, then retry. Your orders are saved.'
+        : messages[body?.error?.code] ?? body?.error?.message ?? `Route request failed (${response.status})`);
       error.code = body?.error?.code;
       throw error;
     }

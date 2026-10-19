@@ -7,17 +7,20 @@ import { OrderMap } from '../components/OrderMap';
 import { AddressReview } from '../components/AddressReview';
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
+import { MAX_ACTIVE_ORDERS } from '../services/receiptEntry';
 
-export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, error, originReview, originReady = true, restaurant, routeStatus, onReviewRoute }) {
+export function OrdersScreen({ orders, onAdd, onRemove, onRescan, onOptimize, loading, error, originReview, originReady = true, restaurant, routeStatus, onReviewRoute, receiptNotice }) {
+  const atCapacity = orders.length >= MAX_ACTIVE_ORDERS;
   const orderSummary = orders.length
     ? `${orders.length} confirmed order${orders.length === 1 ? '' : 's'} ready.`
-    : 'No orders yet. Add a mock receipt to begin.';
+    : 'No orders yet. Scan a receipt to begin.';
 
   return (
     <ScrollView contentContainerStyle={commonStyles.content}>
       <Text style={commonStyles.eyebrow}>ACTIVE RUN</Text>
       <Text style={commonStyles.title}>Scanned orders</Text>
       <Text style={commonStyles.subtitle}>{orderSummary}</Text>
+      {receiptNotice && <Text accessibilityLiveRegion="polite" style={commonStyles.muted}>{receiptNotice}</Text>}
       <OrderMap orders={orders} restaurant={restaurant} />
       {orders.map((order, index) => (
         <View style={styles.orderCard} key={order.order_id}>
@@ -28,13 +31,21 @@ export function OrdersScreen({ orders, onAdd, onRemove, onOptimize, loading, err
             <Text style={commonStyles.cardTitle}>Order #{order.order_id}</Text>
             <Text style={commonStyles.muted}>{reviewedAddressLabel(order)}</Text>
           </View>
-          <Pressable onPress={() => onRemove(order.order_id)}>
+          <View style={styles.orderActions}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Rescan order ${order.order_id}`}
+            style={styles.orderAction} onPress={() => onRescan(order.order_id)}>
+            <Text style={styles.rescan}>Rescan</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Remove order ${order.order_id}`}
+            style={styles.orderAction} onPress={() => onRemove(order.order_id)}>
             <Text style={styles.remove}>Remove</Text>
           </Pressable>
+          </View>
         </View>
       ))}
       {error && <ErrorMessage message={error} />}
-      <AppButton label="Add another receipt" onPress={onAdd} secondary />
+      <AppButton label={orders.length ? 'Scan next receipt' : 'Scan receipt'} onPress={onAdd} secondary disabled={atCapacity || loading} />
+      {atCapacity && <Text style={commonStyles.muted}>Eight-order limit reached. You can still rescan, remove, or optimize these orders.</Text>}
       {routeStatus === 'needs_calculation' && <Text style={commonStyles.muted}>
         Calculate the route for these orders before opening navigation.
       </Text>}
@@ -82,6 +93,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
+  orderActions: { alignItems: 'stretch' },
+  orderAction: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center' },
+  rescan: { color: colors.deepGold, fontWeight: '700', fontSize: 13 },
   loader: {
     marginTop: 4,
   },

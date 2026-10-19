@@ -1,7 +1,7 @@
 # Phase 8 Step 2: Authoritative clocks and fixed-sequence evaluation
 
-Step 1 is committed as `b469239`. Step 2 is implemented on `endtoend` and remains
-uncommitted for review. Google remains the delivery provider. This step adds the
+Step 1 is committed as `b469239`; Step 2 as `4a4b4fc` on `endtoend`.
+Google remains the delivery provider. This step adds the
 backend/service contracts; visible reorder controls and richer route cards remain
 Steps 5 and 4 respectively. No dispatcher or multi-driver functionality is added.
 

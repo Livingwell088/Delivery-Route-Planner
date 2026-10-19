@@ -93,6 +93,7 @@ export function ReceiptScannerScreen({ onCancel, onComplete }) {
         <View style={styles.actions}>
           <AppButton label="Retake" onPress={retake} secondary />
           <AppButton label="Use photo" onPress={() => onComplete(capturedImage)} />
+          <AppButton label="Cancel" onPress={onCancel} secondary />
         </View>
       </View>
     );

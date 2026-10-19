@@ -16,8 +16,9 @@ import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { createNavigationRoute } from './services/navigation';
-import { createReceiptFingerprint, createDraftReceiptFingerprint } from './services/receiptDuplicate';
-import { createOrderDraftFromReceipt, createManualReceiptDraft, validateReceiptDraft } from './services/receiptOrderDraft';
+import { createOrderDraftFromReceipt, createManualReceiptDraft } from './services/receiptOrderDraft';
+import { MAX_ACTIVE_ORDERS, beginReceiptEntry, prepareReceiptEntry, commitReceiptEntry,
+  receiptFingerprintsForEntry, removeReceiptOrder, receiptEntryRoutePreference } from './services/receiptEntry';
 import { optimizeRoute } from './services/routeApi';
 import { addressReviewError, selectedAddressCandidate, confirmAddressForOrder } from './services/addressReview';
 import { confirmAddress, ensureConfirmedAddress } from './services/addressApi';
@@ -49,6 +50,12 @@ export default function App() {
   const [capturedReceipt, setCapturedReceipt] = useState(null);
   const [receiptScanResult, setReceiptScanResult] = useState(null);
   const [acceptedReceiptFingerprints, setAcceptedReceiptFingerprints] = useState([]);
+  const fingerprintsRef = useRef([]);
+  const [receiptEntry, setReceiptEntryState] = useState(null);
+  const entryRef = useRef(null);
+  const setReceiptEntry = (entry) => { entryRef.current = entry; setReceiptEntryState(entry); };
+  const setFingerprints = (values) => { fingerprintsRef.current = values; setAcceptedReceiptFingerprints(values); };
+  const [receiptNotice, setReceiptNotice] = useState(null);
   const mockIndex = useRef(0);
   const busy = useRef(false);
   const [hydrated, setHydrated] = useState(false);
@@ -70,7 +77,7 @@ export default function App() {
       if (!active) return;
       const restored = decodeActiveSession(text);
       setOrders(restored.orders, restored.routePreference);
-      setAcceptedReceiptFingerprints(restored.fingerprints);
+      setFingerprints(restored.fingerprints);
       if (restored.orders.length) setScreen('orders');
       if (restored.discarded) Alert.alert('Previous run cleared', 'The saved delivery run expired or could not be restored. Scan the current orders again.');
     }).catch(() => {
@@ -104,7 +111,47 @@ export default function App() {
     });
   }, []);
 
+  const clearReceipt = () => {
+    setReceiptEntry(null);
+    setDraft(null);
+    setCapturedReceipt(null);
+    setReceiptScanResult(null);
+    setError(null);
+  };
+
+  const beginReceipt = (replacementOrderId = null, destination = 'scanner') => {
+    if (busy.current || !hydrated) return false;
+    try {
+      const entry = beginReceiptEntry(ordersRef.current, replacementOrderId);
+      clearReceipt();
+      setReceiptEntry({ ...entry, returnScreen: screen === 'orders' || ordersRef.current.length ? 'orders' : 'home' });
+      setReceiptNotice(null);
+      setScreen(destination);
+      return true;
+    } catch (caught) {
+      Alert.alert('Unable to start receipt', caught.message);
+      return false;
+    }
+  };
+
+  const cancelReceipt = () => {
+    if (busy.current) return;
+    const returnScreen = entryRef.current?.returnScreen ?? 'home';
+    clearReceipt();
+    setScreen(returnScreen);
+  };
+
+  const retakeReceipt = () => {
+    if (busy.current || !entryRef.current) return;
+    setDraft(null);
+    setCapturedReceipt(null);
+    setReceiptScanResult(null);
+    setError(null);
+    setScreen('scanner');
+  };
+
   const beginMockOrder = () => {
+    if (!beginReceipt(null, 'confirm')) return;
     let next = mockReceipt(mockIndex.current++);
     while (orders.some((order) => order.order_id === next.order_id)) {
       next = { ...mockReceipt(mockIndex.current++), order_id: Date.now().toString().slice(-4) };
@@ -115,12 +162,14 @@ export default function App() {
   };
 
   const finishReceiptCapture = (image) => {
+    if (!entryRef.current) return;
     setCapturedReceipt(image);
     setReceiptScanResult(null);
     setScreen('recognizing');
   };
 
   const finishReceiptRecognition = (result) => {
+    if (!entryRef.current) return;
     setReceiptScanResult(result);
     setDraft(createOrderDraftFromReceipt(result, undefined, { allowCorrection: true }));
     setError(null);
@@ -129,23 +178,17 @@ export default function App() {
 
   const saveDraft = async () => {
     if (busy.current) return;
-    const validationError = validateReceiptDraft(draft);
-    if (validationError) {
-      setError(validationError);
+    const entry = entryRef.current;
+    let prepared;
+    try {
+      prepared = prepareReceiptEntry(ordersRef.current, fingerprintsRef.current, entry, draft, receiptScanResult);
+    } catch (caught) {
+      setError(caught.message);
       return;
     }
     const locationError = addressReviewError(addressReview, draft.address.formatted_address);
     if (locationError) {
       setError(locationError);
-      return;
-    }
-    if (orders.some((order) => order.order_id === draft.order_id)) {
-      setError(`Order #${draft.order_id} is already in the list.`);
-      return;
-    }
-    const fingerprint = draft.source === 'receipt-ocr' ? createDraftReceiptFingerprint(draft) : null;
-    if (fingerprint && acceptedReceiptFingerprints.includes(fingerprint)) {
-      setError('This destination and order time were already added.');
       return;
     }
     busy.current = true;
@@ -155,12 +198,14 @@ export default function App() {
       const selected = selectedAddressCandidate(addressReview, draft.address.formatted_address);
       const address = await confirmAddress(draft.address.formatted_address,
         addressReview.lookupReference, selected.candidate_id);
-      const confirmedOrder = confirmAddressForOrder(draft, addressReview, address);
-      const originalFingerprint = draft.source === 'receipt-ocr' ? createReceiptFingerprint(receiptScanResult) : null;
-      setAcceptedReceiptFingerprints((current) => [...new Set([...current, fingerprint, originalFingerprint].filter(Boolean))]);
-      setOrders((current) => [...current, { ...confirmedOrder, receiptFingerprints: [fingerprint, originalFingerprint].filter(Boolean) }]);
-      setDraft(null);
-      setError(null);
+      if (entryRef.current !== entry) return;
+      const confirmedOrder = confirmAddressForOrder(prepared.draft, addressReview, address);
+      const committed = commitReceiptEntry(ordersRef.current, fingerprintsRef.current, entry, confirmedOrder, prepared.receiptFingerprints);
+      const preference = receiptEntryRoutePreference(planRef.current, entry, confirmedOrder.order_id);
+      setOrders(committed.orders, preference);
+      setFingerprints(committed.fingerprints);
+      clearReceipt();
+      setReceiptNotice(`Order #${confirmedOrder.order_id} ${entry.replacementOrderId === null ? 'added' : 'replaced'}.`);
       setScreen('orders');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to confirm this address.');
@@ -233,9 +278,11 @@ export default function App() {
         text: 'Remove',
         style: 'destructive',
         onPress: () => {
-          const remaining = orders.filter((order) => order.order_id !== orderId);
-          setOrders(remaining);
-          setAcceptedReceiptFingerprints([...new Set(remaining.flatMap((order) => order.receiptFingerprints ?? []))]);
+          if (busy.current) return;
+          const removed = removeReceiptOrder(ordersRef.current, fingerprintsRef.current, orderId);
+          setOrders(removed.orders);
+          setFingerprints(removed.fingerprints);
+          setReceiptNotice(null);
         },
       },
     ]);
@@ -267,31 +314,38 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.safeArea} pointerEvents={loading || !hydrated ? 'none' : 'auto'}>
       <StatusBar style="dark" />
-      <Header screen={screen} onNavigate={(next) => { if (!busy.current && hydrated) setScreen(next); }} orderCount={orders.length} />
+      <Header screen={screen} onNavigate={(next) => {
+        if (!busy.current && hydrated) { clearReceipt(); setScreen(next); }
+      }} orderCount={orders.length} />
       {screen === 'home' && (
         <HomeScreen
           capturedReceipt={capturedReceipt}
           receiptScanResult={receiptScanResult}
           onMock={beginMockOrder}
-          onScan={() => setScreen('scanner')}
+          onScan={() => beginReceipt()}
+          atCapacity={orders.length >= MAX_ACTIVE_ORDERS}
         />
       )}
       {screen === 'scanner' && (
-        <ReceiptScannerScreen onCancel={() => setScreen('home')} onComplete={finishReceiptCapture} />
+        <ReceiptScannerScreen onCancel={cancelReceipt} onComplete={(image) => {
+          if (entryRef.current === receiptEntry) finishReceiptCapture(image);
+        }} />
       )}
       {screen === 'recognizing' && capturedReceipt && (
         <ReceiptRecognitionScreen
           image={capturedReceipt}
-          acceptedReceiptFingerprints={acceptedReceiptFingerprints}
-          onCancel={() => setScreen('home')}
-          onComplete={finishReceiptRecognition}
+          acceptedReceiptFingerprints={receiptFingerprintsForEntry(orders, acceptedReceiptFingerprints, receiptEntry?.replacementOrderId)}
+          replacementOrderId={receiptEntry?.replacementOrderId}
+          onCancel={cancelReceipt}
+          onComplete={(result) => { if (entryRef.current === receiptEntry) finishReceiptRecognition(result); }}
           onManual={() => {
+            if (!receiptEntry || entryRef.current !== receiptEntry) return;
             setReceiptScanResult(null);
             setDraft(createManualReceiptDraft());
             setError(null);
             setScreen('confirm');
           }}
-          onRetake={() => setScreen('scanner')}
+          onRetake={retakeReceipt}
         />
       )}
       {screen === 'confirm' && draft && (
@@ -303,8 +357,9 @@ export default function App() {
           onRetryAddress={retryAddress}
           onChange={(nextDraft) => { if (!busy.current) { setDraft(nextDraft); setError(null); } }}
           onSave={saveDraft}
-          onCancel={() => { if (!busy.current) { setDraft(null); setError(null); setScreen('home'); } }}
-          onRetake={() => { if (!busy.current) { setDraft(null); setError(null); setScreen('scanner'); } }}
+          replacementOrderId={receiptEntry?.replacementOrderId}
+          onCancel={cancelReceipt}
+          onRetake={retakeReceipt}
           error={error}
         />
       )}
@@ -314,7 +369,9 @@ export default function App() {
           originReview={needsRestaurant && orders.length ? originReview : null}
           restaurant={restaurant}
           originReady={!needsRestaurant || !addressReviewError(originReview.review, DEFAULT_RESTAURANT.formatted_address)}
-          onAdd={() => setScreen('home')}
+          onAdd={() => beginReceipt()}
+          onRescan={(orderId) => beginReceipt(orderId)}
+          receiptNotice={receiptNotice}
           onRemove={removeOrder}
           onOptimize={requestRoute}
           routeStatus={routePlan.status}
