@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import { DEFAULT_RESTAURANT } from '../data/mockReceipts';
 import { reviewedAddressLabel } from '../services/addressReview';
 import { colors } from '../theme/colors';
 
 const MAP_PADDING = { top: 45, right: 45, bottom: 45, left: 45 };
-const MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+const MAPS_API_KEY = Platform.OS === 'ios'
+  ? process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY
+  : process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 function getInitialRegion(coordinates) {
   const latitudes = coordinates.map((coordinate) => coordinate.latitude);
@@ -56,7 +58,7 @@ export function OrderMap({ orders, showRoute = false, restaurant = DEFAULT_RESTA
       <View style={[styles.container, styles.unavailable]}>
         <Text style={styles.unavailableTitle}>Map preview unavailable</Text>
         <Text style={styles.unavailableText}>
-          Add an Android Google Maps API key and rebuild to enable map previews.
+          Add a Google Maps key for this platform and rebuild to enable map previews.
         </Text>
       </View>
     );
@@ -65,6 +67,7 @@ export function OrderMap({ orders, showRoute = false, restaurant = DEFAULT_RESTA
   return (
     <View style={styles.container}>
       <MapView
+        provider={PROVIDER_GOOGLE}
         ref={map}
         style={styles.map}
         initialRegion={getInitialRegion(coordinates)}

@@ -146,6 +146,17 @@ app package/signing certificate. The package is `com.livingwell088.routerunner`.
 Adding/changing that key requires `npm run android` to update native config.
 Address lookup does not require putting the backend key in this file.
 
+For Google previews on iOS, use a different key in
+`EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY`, restricted to **Maps SDK for iOS** and
+bundle identifier `com.livingwell088.routerunner`. The Expo configuration wires
+both platform keys through the `react-native-maps` plugin; the preview uses the
+Google provider on both platforms. Keys remain in ignored `mobile/.env`.
+After adding/changing the iOS key, make a native iOS rebuild on macOS using
+`npm run ios`. A JavaScript export on Windows does not validate CocoaPods,
+native compilation or Google authorization on an iPhone. On that build, check
+Orders for map tiles, the restaurant and order markers. No changes are needed
+to the existing choice of external Apple/Google navigation app.
+
 Restart Metro after changing mobile `.env`. Both `.env` files are ignored by Git.
 Never put the private backend key in an `EXPO_PUBLIC_*` variable or screenshots.
 The checked-in `mobile/.env.example` has older sample host/port values; explicitly

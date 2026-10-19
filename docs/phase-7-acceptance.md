@@ -1,6 +1,6 @@
 # Phase 7 Step 7: Delivery acceptance results
 
-Step 6 is committed as `bdac8ba`. Step 7 changes remain uncommitted for review.
+Step 6 is committed as `bdac8ba`; Step 7 as `c1243f6`.
 Automated acceptance passed. Final native-device acceptance remains pending;
 this report does not declare the delivery mode fully device-verified.
 
