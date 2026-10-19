@@ -1,7 +1,7 @@
 # Phase 8 Step 3: Scan next and safe rescan replacement
 
-Step 2 is committed as `4a4b4fc` on `endtoend`. Step 3 remains uncommitted for
-review. This step changes the single-driver receipt workflow; it does not add
+Step 2 is committed as `4a4b4fc`; Step 3 as `4b9b099` on `endtoend`.
+This step changes the single-driver receipt workflow; it does not add
 dispatcher/multi-driver functionality or automatic route recomputation.
 
 ## Driver behavior
@@ -64,7 +64,8 @@ new Google request. Reoptimization remains explicit, using the existing safeguar
 
 ## Verification — October 19, 2026
 
-- **144 mobile tests passed**, including 11 new receipt-entry transaction cases.
+- **145 mobile tests passed**, including 11 new receipt-entry transaction cases
+  and the follow-up old-backend contract error check added before commit.
 - **246 backend tests passed**, including a new cross-stack receipt acceptance
   case and all prior Phase 7/Phase 8 checks.
 - The new HTTP acceptance case uses production mobile draft/duplicate/review/

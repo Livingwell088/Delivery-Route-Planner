@@ -5,7 +5,9 @@ import pytest
 from delivery_router.explanations import (
     explain_route,
     explain_strategy_comparison,
+    explain_driver_route,
 )
+from delivery_router.metrics import evaluate_route
 from delivery_router.models import Order, TravelTimeMatrix
 from delivery_router.scoring import ScoringConfig
 from delivery_router.strategies import age_aware_route, compare_strategies
@@ -93,3 +95,40 @@ def test_explain_strategy_comparison_rejects_missing_strategy() -> None:
         match="comparison is missing strategies: age_aware, oldest_order_first",
     ):
         explain_strategy_comparison({"shortest_route": object()})
+
+
+def test_driver_explanation_reports_actual_driving_age_tradeoffs_without_raw_scores():
+    orders = (Order("A", "A", 44), Order("B", "B", 10), Order("C", "C", 5))
+    matrix = TravelTimeMatrix({
+        "R": {"A": 8, "B": 2, "C": 3}, "A": {"R": 8, "B": 8, "C": 8},
+        "B": {"R": 2, "A": 8, "C": 2}, "C": {"R": 3, "A": 7, "B": 2},
+    })
+    config = ScoringConfig()
+    comparison = compare_strategies("R", orders, matrix, config)
+    lines = explain_driver_route(comparison["age_aware"], config, comparison)
+    assert "1 min more than the shortest-driving route" in lines[1]
+    assert "Combined minutes beyond 45 min of age: 7 vs 10" in lines[1]
+    assert "score" not in " ".join(lines).lower()
+
+
+def test_driver_explanation_reports_tied_different_orders_without_claiming_an_improvement():
+    orders = (Order("A", "A", 10), Order("B", "B", 10))
+    matrix = TravelTimeMatrix({"R": {"A": 1, "B": 1}, "A": {"R": 1, "B": 1}, "B": {"R": 1, "A": 1}})
+    config = ScoringConfig()
+    selected = evaluate_route("R", orders, matrix, config)
+    reverse = evaluate_route("R", tuple(reversed(orders)), matrix, config)
+    lines = explain_driver_route(selected, config, {"shortest_route": reverse, "oldest_order_first": selected})
+    assert "tie under" in lines[1]
+    assert "matches oldest-order-first" in lines[2]
+    assert "lower" not in " ".join(lines)
+
+
+def test_driver_selected_explanation_does_not_claim_optimization():
+    config = ScoringConfig()
+    matrix = TravelTimeMatrix({"R": {"A": 8}, "A": {"R": 10}})
+    selected = evaluate_route("R", (Order("A", "A", 44),), matrix, config)
+    lines = explain_driver_route(selected, config)
+    assert "no automatic optimization" in lines[0]
+    assert "18 min" in lines[1]
+    assert "52 to 52 min" in lines[2]
+    assert "1 order(s) exceed 45 min" in lines[2]

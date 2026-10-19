@@ -5,6 +5,7 @@ import { optimizeRoute, evaluateRoute } from '../src/services/routeApi.js';
 import { createRoutePlan, changeRouteInputs, changeRouteSequence, beginRouteRequest,
   prepareRouteRequest, completeRouteRequest } from '../src/services/routePlan.js';
 import { formatPlacedTime } from '../src/services/placedTime.js';
+import { buildRouteReview } from '../src/services/routeReview.js';
 
 assert.equal(process.env.PHASE8_ACCEPTANCE, 'mock-provider', 'Use the Python acceptance harness');
 const root = process.env.EXPO_PUBLIC_API_URL;
@@ -40,6 +41,12 @@ assert.deepEqual(evaluated.ordered_stops.map((stop) => stop.predicted_order_age_
 assert.deepEqual(evaluated.ordered_stops.map((stop) => formatPlacedTime(stop.arrival_at)), ['6:03 PM', '6:08 PM', '6:12 PM']);
 assert.equal(evaluated.ordered_stops[1].address.unit, 'Apt 2');
 assert.equal(evaluated.ordered_stops[2].address.unit, 'Suite 3');
+const review = buildRouteReview(evaluated);
+assert.equal(review.title, 'Your selected stop order');
+assert.equal(review.departure, '6:00 PM EDT');
+assert.equal(review.returnTime, '6:16 PM EDT');
+assert.deepEqual(review.stops.map((stop) => stop.arrivalTime), ['6:03 PM EDT', '6:08 PM EDT', '6:12 PM EDT']);
+assert.match(evaluated.explanation[0], /no automatic optimization/);
 let plan = changeRouteSequence(changeRouteInputs(createRoutePlan(), orders, origin), sequence, orders);
 plan = beginRouteRequest(plan, 'evaluate');
 plan = completeRouteRequest(prepareRouteRequest(plan, plan, orders, origin, departureAt), plan, evaluated);

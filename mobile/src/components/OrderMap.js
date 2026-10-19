@@ -110,7 +110,7 @@ export function OrderMap({ orders, showRoute = false, restaurant = DEFAULT_RESTA
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, styles.orderDot]} />
-          <Text style={styles.legendText}>{showRoute ? 'Stop order' : 'Orders'}</Text>
+          <Text style={styles.legendText}>{showRoute ? 'Stop-order preview' : 'Orders'}</Text>
         </View>
       </View>
     </View>

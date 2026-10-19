@@ -15,6 +15,7 @@ from delivery_router.api.schemas import (
 )
 from delivery_router.models import Order, TravelTimeMatrix
 from delivery_router.metrics import evaluate_route
+from delivery_router.explanations import explain_driver_route
 from delivery_router.scoring import ScoringConfig
 from delivery_router.strategies import compare_strategies
 
@@ -112,21 +113,11 @@ class RouteOptimizationService:
         if sequence is None:
             comparison = compare_strategies("start", orders, matrix, ScoringConfig())
             selected = comparison["age_aware"]
-            shortest = comparison["shortest_route"]
-            oldest = comparison["oldest_order_first"]
-            explanation = [
-                f"Selected order: {' -> '.join(selected.order_sequence)}.",
-                f"Age-aware score {selected.score:.1f}; shortest-route score {shortest.score:.1f}; oldest-first score {oldest.score:.1f}.",
-                f"The route predicts {selected.total_late_minutes} total minute(s) beyond the lateness threshold.",
-            ]
+            explanation = explain_driver_route(selected, ScoringConfig(), comparison)
         else:
             by_id = {order.order_id: order for order in orders}
             selected = evaluate_route("start", tuple(by_id[key] for key in sequence), matrix, ScoringConfig())
-            explanation = [
-                f"Driver-selected order: {' -> '.join(selected.order_sequence)}.",
-                "Calculated this exact stop order without optimizing or replacing it.",
-                f"The route predicts {selected.total_late_minutes} total minute(s) beyond the lateness threshold.",
-            ]
+            explanation = explain_driver_route(selected, ScoringConfig())
 
         try:
             arrivals = {delivery.order.order_id: departure + timedelta(minutes=delivery.elapsed_minutes)

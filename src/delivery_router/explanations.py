@@ -1,7 +1,43 @@
 """Human-readable explanations for selected routes."""
 
 
+from math import isclose
+
 from delivery_router.models import RouteEvaluation
+from delivery_router.scoring import ScoringConfig
+
+
+def explain_driver_route(selected: RouteEvaluation, config: ScoringConfig,
+                         comparison: dict[str, RouteEvaluation] | None = None) -> list[str]:
+    """Explain actual results without inventing priorities or claiming strict wins for ties."""
+    threshold = config.severe_lateness_minutes
+    if comparison is None:
+        ages = [delivery.wait_minutes for delivery in selected.deliveries]
+        return [
+            "Your selected stop order was preserved; no automatic optimization was applied.",
+            f"Total driving, including restaurant return: {selected.total_driving_minutes} min.",
+            f"Predicted order ages at delivery range from {min(ages)} to {max(ages)} min. "
+            f"{selected.severely_late_order_count} order(s) exceed {threshold} min of total age.",
+        ]
+
+    def describe(name: str, baseline: RouteEvaluation) -> str:
+        if selected.order_sequence == baseline.order_sequence:
+            return f"The stop order matches {name}: {selected.total_driving_minutes} min driving, including return."
+        difference = selected.total_driving_minutes - baseline.total_driving_minutes
+        driving = (f"Driving time matches {name} ({selected.total_driving_minutes} min)." if difference == 0 else
+                   f"Driving takes {selected.total_driving_minutes} min, {abs(difference)} min "
+                   f"{'more' if difference > 0 else 'less'} than {name}.")
+        tie = " These stop orders tie under the driving-and-order-age selection rules." if isclose(selected.score, baseline.score) else ""
+        return (f"{driving} Total order ages across all deliveries: {selected.total_customer_wait_minutes} "
+                f"vs {baseline.total_customer_wait_minutes} min. Combined minutes beyond {threshold} min of age: "
+                f"{selected.total_late_minutes} vs {baseline.total_late_minutes}.{tie}")
+
+    return [
+        f"Balances driving time with total order age at delivery. Each minute beyond {threshold} min of order age "
+        f"receives extra weight when choosing the stop order.",
+        describe("the shortest-driving route", comparison["shortest_route"]),
+        describe("oldest-order-first", comparison["oldest_order_first"]),
+    ]
 
 
 def explain_route(evaluation: RouteEvaluation) -> str:
