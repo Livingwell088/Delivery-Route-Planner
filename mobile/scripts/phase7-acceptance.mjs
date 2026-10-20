@@ -58,8 +58,8 @@ if (phase === 'prepare') {
   const appleRoute = createNavigationRoute('apple', route.ordered_stops, origin, { OS: 'ios', Version: '18.4' });
   assert.equal(appleRoute.includesAllStops, true);
   const apple = new URL(appleRoute.url);
-  assert.equal(apple.searchParams.get('source'), origin.formatted_address);
-  assert.deepEqual(apple.searchParams.getAll('waypoint'), route.ordered_stops.map((stop) => stop.address.formatted_address));
+  assert.equal(apple.searchParams.get('source'), `${origin.coordinates.latitude},${origin.coordinates.longitude}`);
+  assert.deepEqual(apple.searchParams.getAll('waypoint'), route.ordered_stops.map((stop) => `${stop.address.coordinates.latitude},${stop.address.coordinates.longitude}`));
   assert.match(formatPlacedTime(orders[0].placedAt), /\d+:\d{2}\s[AP]M/);
 
   let invalidReview;

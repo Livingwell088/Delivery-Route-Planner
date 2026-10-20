@@ -56,7 +56,7 @@ assert.deepEqual(plan.sequence, chosen);
 assert.equal(plan.sequenceSource, 'manual');
 assert.equal(canNavigateRoute(plan, orders, origin), true);
 const apple = new URL(createNavigationRoute('apple', plan.route.ordered_stops, origin, { OS: 'ios', Version: '18.4' }).url);
-assert.deepEqual(apple.searchParams.getAll('waypoint'), ordersInRouteOrder(plan, orders).map((order) => order.address.formatted_address));
+assert.deepEqual(apple.searchParams.getAll('waypoint'), ordersInRouteOrder(plan, orders).map((order) => `${order.address.coordinates.latitude},${order.address.coordinates.longitude}`));
 
 const removed = chosen[1];
 orders = orders.filter((order) => order.order_id !== removed);

@@ -10,7 +10,7 @@ const address = (label, minutes = 30) => ({ formatted_address: label, coordinate
   validated_location: { provider: 'google', validation_reference: 'signed', expires_at: new Date(now + minutes * 60000).toISOString() } });
 function currentRun() {
   const restaurant = address('Restaurant', 60);
-  const orders = ['A', 'B'].map((order_id) => ({ order_id, placedAt: new Date(now - 60000).toISOString(), address: address(`${order_id} · Apt 2`) }));
+  const orders = ['A', 'B'].map((order_id, index) => ({ order_id, placedAt: new Date(now - 60000).toISOString(), address: { ...address(`${order_id} · Apt 2`), coordinates: { latitude: 42 + index / 10, longitude: -71 } } }));
   let plan = beginRouteRequest(changeRouteInputs(createRoutePlan(), orders, restaurant), 'evaluate');
   plan = prepareRouteRequest(plan, plan, orders, restaurant, new Date(now).toISOString());
   plan = completeRouteRequest(plan, plan, { ordered_stops: orders.map((order) => ({ ...order })), total_drive_minutes: 10 });
@@ -37,16 +37,16 @@ test('expiry presentation does not interrupt a request refreshing old confirmati
   assert.equal(expireRoutePlan(pending, run.orders, run.restaurant, now + 60 * 60000), pending);
 });
 
-test('navigation exports current evaluated labels and confirmed restaurant', async () => {
+test('navigation exports current evaluated buildings and confirmed restaurant', async () => {
   const run = currentRun();
   const urls = [];
   const result = await openRouteNavigation({ getCurrent: () => run, navigationApp: 'apple',
     platform: { OS: 'ios', Version: '18.4' }, now: () => now, openURL: async (url) => { urls.push(url); } });
   assert.equal(result.status, 'opened');
   const url = new URL(urls[0]);
-  assert.equal(url.searchParams.get('source'), 'Restaurant');
-  assert.equal(url.searchParams.get('destination'), 'Restaurant');
-  assert.deepEqual(url.searchParams.getAll('waypoint'), ['A · Apt 2', 'B · Apt 2']);
+  assert.equal(url.searchParams.get('source'), '42,-71');
+  assert.equal(url.searchParams.get('destination'), '42,-71');
+  assert.deepEqual(url.searchParams.getAll('waypoint'), ['42,-71', '42.1,-71']);
 });
 
 test('expired and changed routes are blocked even when time passes during the fallback notice', async () => {
