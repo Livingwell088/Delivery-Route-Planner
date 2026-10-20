@@ -1,7 +1,7 @@
 # Phase 8 Step 4: Understandable route review
 
 Step 3 is committed as `4b9b099` on `endtoend`, including the clearer older-backend
-request error. Step 4 remains uncommitted for review. Reorder/recalculate controls
+request error. Step 4 is committed as `23a16b0`. Reorder/recalculate controls
 remain Step 5; no dispatcher/multi-driver functionality is introduced.
 
 ## What the driver sees

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRoutePlan, changeRouteInputs, changeRouteSequence, beginRouteRequest,
   prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest,
-  canNavigateRoute } from '../src/services/routePlan.js';
+  canNavigateRoute, moveRouteStop, ordersInRouteOrder } from '../src/services/routePlan.js';
 
 const now = Date.parse('2026-10-19T22:00:00Z');
 const departureAt = new Date(now).toISOString();
@@ -104,4 +104,34 @@ test('request can adopt refreshed confirmations without accepting an older input
   const plan = completeRouteRequest(prepared, pending, result);
   assert.equal(canNavigateRoute(plan, orders, refreshed, now), true);
   assert.equal(canNavigateRoute(plan, orders, address, now), false);
+});
+
+test('moving a ready route invalidates every estimate and aligns ordered display without mutating active orders', () => {
+  const original = structuredClone(orders);
+  const plan = moveRouteStop(ready(), 'B', -1, orders);
+  assert.equal(plan.status, 'needs_calculation');
+  assert.equal(plan.route, null);
+  assert.equal(plan.departureAt, null);
+  assert.equal(plan.sequenceSource, 'manual');
+  assert.equal(canNavigateRoute(plan, orders, address, now), false);
+  assert.deepEqual(ordersInRouteOrder(plan, orders).map((order) => order.order_id), ['B', 'A']);
+  assert.deepEqual(orders, original);
+});
+
+test('successive moves use the latest sequence, with no-op boundaries and safe invalid input rejection', () => {
+  const threeOrders = [...orders, { ...orders[0], order_id: 'C' }];
+  let plan = changeRouteInputs(createRoutePlan(), threeOrders, address);
+  assert.equal(moveRouteStop(plan, 'A', -1, threeOrders), plan);
+  assert.equal(moveRouteStop(plan, 'C', 1, threeOrders), plan);
+  plan = moveRouteStop(plan, 'C', -1, threeOrders);
+  plan = moveRouteStop(plan, 'C', -1, threeOrders);
+  assert.deepEqual(plan.sequence, ['C', 'A', 'B']);
+  assert.throws(() => moveRouteStop(plan, 'missing', -1, threeOrders), /no longer/);
+  assert.throws(() => moveRouteStop(plan, 'A', 2, threeOrders), /one stop/);
+  const removed = changeRouteInputs(plan, threeOrders.filter((order) => order.order_id !== 'A'), address);
+  assert.deepEqual(removed.sequence, ['C', 'B']);
+  const added = changeRouteInputs(removed, [...threeOrders.filter((order) => order.order_id !== 'A'), { ...orders[0], order_id: 'D' }], address);
+  assert.deepEqual(added.sequence, ['C', 'B', 'D']);
+  assert.equal(added.sequenceSource, 'manual');
+  assert.equal(changeRouteInputs(added, [], address).status, 'empty');
 });

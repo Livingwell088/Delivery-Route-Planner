@@ -34,6 +34,24 @@ export function changeRouteSequence(plan, sequence, orders) {
     route: null, departureAt: null, calculatedAt: null, error: null };
 }
 
+export function ordersInRouteOrder(plan, orders) {
+  if (!validSequence(plan.sequence, orders)) return orders;
+  const byId = new Map(orders.map((order) => [order.order_id, order]));
+  return plan.sequence.map((id) => byId.get(id));
+}
+
+export function moveRouteStop(plan, orderId, direction, orders) {
+  if (![1, -1].includes(direction)) throw new Error('Move one stop up or down.');
+  if (!validSequence(plan.sequence, orders)) throw new Error('Review the current orders before reordering.');
+  const index = plan.sequence.indexOf(orderId);
+  if (index < 0) throw new Error('This order is no longer in the run.');
+  const destination = index + direction;
+  if (destination < 0 || destination >= plan.sequence.length) return plan;
+  const sequence = [...plan.sequence];
+  [sequence[index], sequence[destination]] = [sequence[destination], sequence[index]];
+  return changeRouteSequence(plan, sequence, orders);
+}
+
 export function beginRouteRequest(plan, mode = 'optimize') {
   if (!plan.sequence.length) throw new Error('Add an order before calculating a route.');
   if (!['optimize', 'evaluate'].includes(mode)) throw new Error('Unknown route calculation mode.');

@@ -19,13 +19,14 @@ import { createNavigationRoute } from './services/navigation';
 import { createOrderDraftFromReceipt, createManualReceiptDraft } from './services/receiptOrderDraft';
 import { MAX_ACTIVE_ORDERS, beginReceiptEntry, prepareReceiptEntry, commitReceiptEntry,
   receiptFingerprintsForEntry, removeReceiptOrder, receiptEntryRoutePreference } from './services/receiptEntry';
-import { optimizeRoute } from './services/routeApi';
+import { optimizeRoute, evaluateRoute } from './services/routeApi';
 import { addressReviewError, selectedAddressCandidate, confirmAddressForOrder } from './services/addressReview';
 import { confirmAddress, ensureConfirmedAddress } from './services/addressApi';
 import { ACTIVE_SESSION_KEY, createSessionWriter, decodeActiveSession, encodeActiveSession } from './services/activeSession';
 import { colors } from './theme/colors';
 import { createRoutePlan, changeRouteInputs, beginRouteRequest, isCurrentRouteRequest,
-  prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest, canNavigateRoute } from './services/routePlan';
+  prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest, canNavigateRoute,
+  moveRouteStop, ordersInRouteOrder } from './services/routePlan';
 
 export default function App() {
   const [screen, setScreen] = useState('home');
@@ -216,19 +217,26 @@ export default function App() {
     }
   };
 
-  const requestRoute = async () => {
-    if (!orders.length || busy.current) return;
+  const requestRoute = async (mode) => {
+    if (!ordersRef.current.length || busy.current) return;
+    const originNeedsReview = !restaurantRef.current || Date.parse(restaurantRef.current.validated_location.expires_at) <= Date.now();
+    if (originNeedsReview && screen !== 'orders') {
+      setError('Review the restaurant starting location below, then choose recalculation or optimization.');
+      setScreen('orders');
+      return;
+    }
     busy.current = true;
     setLoading(true);
     setError(null);
-    updatePlan(beginRouteRequest(planRef.current));
+    const sequence = [...planRef.current.sequence];
+    updatePlan(beginRouteRequest(planRef.current, mode));
     const ticket = { requestId: planRef.current.requestId, revision: planRef.current.revision };
     const controller = new AbortController();
     routeAbort.current = controller;
     const current = () => !controller.signal.aborted && isCurrentRouteRequest(planRef.current, ticket);
     try {
-      let origin = restaurant;
-      if (needsRestaurant) {
+      let origin = restaurantRef.current;
+      if (originNeedsReview) {
         const selected = selectedAddressCandidate(originReview.review, DEFAULT_RESTAURANT.formatted_address);
         if (!selected || !originReview.review.lookupReference) throw new Error('Check and select the restaurant starting location below.');
         origin = await confirmAddress(DEFAULT_RESTAURANT.formatted_address,
@@ -236,7 +244,7 @@ export default function App() {
         if (!current()) return;
       }
       const currentOrders = [];
-      for (const order of orders) {
+      for (const order of ordersRef.current) {
         currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll, signal: controller.signal }) });
         if (!current()) return;
       }
@@ -248,20 +256,22 @@ export default function App() {
       restaurantRef.current = origin;
       setOrdersState(currentOrders);
       setRestaurantState(origin);
-      const result = await optimizeRoute(origin, currentOrders, { departureAt, signal: controller.signal });
+      const options = { departureAt, signal: controller.signal };
+      const result = mode === 'evaluate' ? await evaluateRoute(origin, currentOrders, sequence, options)
+        : await optimizeRoute(origin, currentOrders, options);
       if (!current()) return;
       updatePlan(completeRouteRequest(planRef.current, ticket, result));
       setRevalidateAll(false);
       setScreen('route');
     } catch (caught) {
       if (!current()) return;
-      updatePlan(failRouteRequest(planRef.current, ticket, caught instanceof Error ? caught.message : 'Unable to optimize this route.'));
-      if (needsRestaurant && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
+      updatePlan(failRouteRequest(planRef.current, ticket, caught instanceof Error ? caught.message : 'Unable to calculate this route.'));
+      if (originNeedsReview && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
       if (caught?.code === 'location_review_required') {
         setRestaurant(null);
         setRevalidateAll(true);
       }
-      setError(caught instanceof Error ? caught.message : 'Unable to optimize this route.');
+      setError(caught instanceof Error ? caught.message : 'Unable to calculate this route.');
     } finally {
       if (routeAbort.current === controller) {
         routeAbort.current = null;
@@ -269,6 +279,14 @@ export default function App() {
         setLoading(false);
       }
     }
+  };
+
+  const moveStop = (orderId, direction) => {
+    if (busy.current || !hydrated) return;
+    try {
+      updatePlan(moveRouteStop(planRef.current, orderId, direction, ordersRef.current));
+      setError(null);
+    } catch (caught) { setError(caught.message); }
   };
 
   const removeOrder = (orderId) => {
@@ -365,7 +383,7 @@ export default function App() {
       )}
       {screen === 'orders' && (
         <OrdersScreen
-          orders={orders}
+          orders={ordersInRouteOrder(routePlan, orders)}
           originReview={needsRestaurant && orders.length ? originReview : null}
           restaurant={restaurant}
           originReady={!needsRestaurant || !addressReviewError(originReview.review, DEFAULT_RESTAURANT.formatted_address)}
@@ -373,7 +391,9 @@ export default function App() {
           onRescan={(orderId) => beginReceipt(orderId)}
           receiptNotice={receiptNotice}
           onRemove={removeOrder}
-          onOptimize={requestRoute}
+          onOptimize={() => requestRoute('optimize')}
+          onRecalculate={() => requestRoute('evaluate')}
+          preserveSequence={routePlan.sequenceSource === 'manual' || routePlan.requestId > 0}
           routeStatus={routePlan.status}
           onReviewRoute={() => setScreen('route')}
           loading={loading}
@@ -387,6 +407,12 @@ export default function App() {
           navigationApp={navigationApp}
           onNavigate={openRoute}
           plan={routePlan}
+          orders={ordersInRouteOrder(routePlan, orders)}
+          onMove={moveStop}
+          onRemove={removeOrder}
+          onRecalculate={() => requestRoute('evaluate')}
+          onOptimize={() => requestRoute('optimize')}
+          error={error}
           onReviewOrders={() => setScreen('orders')}
         />
       )}

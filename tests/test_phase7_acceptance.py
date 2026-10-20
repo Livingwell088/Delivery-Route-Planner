@@ -35,7 +35,7 @@ def google_result(number, suffix=""):
 
 
 @contextmanager
-def running_backend(database, calls, limit=5):
+def running_backend(database, calls, limit=5, flexible_matrix=False):
     settings = Settings(_env_file=None, map_provider="google", google_maps_api_key="synthetic-acceptance-key",
                         google_maps_usage_db=str(database), google_maps_monthly_limit_usd=limit)
     app = create_app(settings=settings)
@@ -51,11 +51,15 @@ def running_backend(database, calls, limit=5):
         calls.append("matrix")
         payload = json.loads(request.content)
         ids = [value["waypoint"]["placeId"] for value in payload["origins"]]
-        assert ids == ["synthetic-30", "synthetic-10", "synthetic-20", "synthetic-40-alternative"]
+        if flexible_matrix:
+            assert ids[0] == "synthetic-30"
+            assert all(value in {"synthetic-10", "synthetic-20", "synthetic-40-alternative", "synthetic-50"} for value in ids[1:])
+        else:
+            assert ids == ["synthetic-30", "synthetic-10", "synthetic-20", "synthetic-40-alternative"]
         assert payload["origins"] == payload["destinations"]
         return httpx.Response(200, json=[
             {"originIndex": i, "destinationIndex": j, "duration": f"{0 if i == j else 60 + i * 70 + j * 30}s",
-             "status": {}, "condition": "ROUTE_EXISTS"} for i in range(4) for j in range(4)
+            "status": {}, "condition": "ROUTE_EXISTS"} for i in range(len(ids)) for j in range(len(ids))
         ][::-1])
     original = app.state.address_service.client.client
     transport = httpx.Client(transport=httpx.MockTransport(google))
