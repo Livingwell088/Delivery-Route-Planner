@@ -1,8 +1,9 @@
 # Phase 8 Step 6: Recovery, persistence and navigation integration
 
 Step 5, including the simplified pages and bottom Maps button, is committed as
-`59089b7` on `endtoend`. Step 6 is uncommitted for review. Step 7's final Phase 8
-end-to-end acceptance remains ahead. No dispatcher/multi-driver work is included.
+`59089b7` on `endtoend`. Step 6 is committed as `2e754c6`. See the
+[Step 7 acceptance report](phase-8-acceptance.md) for final automated results and
+remaining native checks. No dispatcher/multi-driver work is included.
 
 ## Changes
 

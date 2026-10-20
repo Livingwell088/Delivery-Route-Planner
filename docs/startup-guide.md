@@ -1,6 +1,6 @@
 # RouteRunner: setup, startup, testing, and troubleshooting
 
-Updated October 16, 2026. This is the main startup guide for the current Windows
+Updated October 20, 2026. This is the main startup guide for the current Windows
 development setup. Older phase documents describe historical behavior and may
 use port 8000. This guide consistently uses **backend port 8002** and **Metro
 port 8081**.
@@ -329,7 +329,8 @@ Use committed synthetic fixtures, not private customer receipts, for shared test
 | Port 8002 or 8081 is occupied | Reuse the intended running process or stop it in its terminal with Ctrl+C. Do not kill unrelated processes. Keep configured ports consistent. |
 | Script execution policy blocks npm.ps1 | Use `npm.cmd` in place of `npm`; do not weaken machine-wide execution policy just to launch the app. |
 | Python activation script is blocked | Use `.\.venv\Scripts\python.exe` directly, as above. |
-| Route requires address confirmation | Restart the backend after updating to Step 4. Confirm the restaurant on Orders. Expired or changed destinations require a fresh lookup; remove and add an order again if its destination needs review. |
+| Route requires address confirmation | Confirm the restaurant on Orders. Expired or changed destinations require review; use the affected order's ••• → Rescan to replace it safely. |
+| Request validation failed after a code update | Stop and restart the backend on 8002 so it loads the Phase 8 timing contract (`placed_at`, `departure_at`, and `/routes/evaluate`). Reload the app and retry. |
 
 To inspect listeners without stopping anything:
 
@@ -364,6 +365,8 @@ An iOS simulator can use `127.0.0.1:8002`, but local iOS simulator/build tooling
 requires macOS/Xcode. Windows Android checks do not verify Apple Maps behavior.
 
 ## Reference
+
+- [Current Phase 8 driver flow, acceptance commands and device checklist](phase-8-acceptance.md)
 
 - [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/)
 - [Current backend contract/configuration](phase-7-foundation.md)

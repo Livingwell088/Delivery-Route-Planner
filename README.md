@@ -3,9 +3,9 @@
 For current Windows backend, Android emulator, and mobile startup instructions,
 use the [RouteRunner startup guide](docs/startup-guide.md).
 
-An isolated Python prototype that compares restaurant-delivery sequences using
-driving time, customer wait, and severe-lateness penalties. It is intentionally
-separate from the future mobile application.
+A Python routing backend and native Expo mobile app for scanning restaurant
+delivery receipts, confirming destinations, and comparing delivery sequences using
+driving time, customer wait, and severe-lateness penalties.
 
 ## Requirements
 
@@ -45,17 +45,18 @@ python -m pytest tests/test_acceptance.py -v
 ## Run the API
 
 ```powershell
-uvicorn delivery_router.api.app:app --reload
+uvicorn delivery_router.api.app:app --port 8002
 ```
 
 Interactive OpenAPI documentation is then available at
-`http://127.0.0.1:8000/docs`. The Phase 3 endpoints are:
+`http://127.0.0.1:8002/docs`. The endpoints include:
 
 - `POST /addresses/validate`
 - `POST /addresses/confirm` (Google candidate confirmation; see [Step 4](docs/phase-7-confirmed-locations.md))
 - `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
   `PUT /orders/{order_id}`, and `DELETE /orders/{order_id}`
 - `POST /routes/optimize`
+- `POST /routes/evaluate` (calculate timing for the driver's chosen sequence)
 - `GET /maps/usage` (this backend's usage reservations and configured allowance)
 
 Google mode requires backend-confirmed locations for the restaurant and orders.
@@ -75,13 +76,13 @@ Copy `.env.example` to `.env`, replace the key
 placeholder, and start the server:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 # Edit .env locally and set GOOGLE_MAPS_API_KEY.
 uvicorn delivery_router.api.app:app --reload --port 8002
 ```
 
-Never commit the API key. When Google mode is enabled, optimization requests
-may contain address text without manually supplied coordinates.
+Never commit the API key. Google route requests require signed confirmations
+from the address review flow for the restaurant and every order.
 
 For an existing `.env` containing only a Google key, add `MAP_PROVIDER=google`.
 The server now rejects a configured key in development-provider mode instead of
@@ -94,9 +95,9 @@ Phase 7 adds the location contract, explicit configuration, and conservative
 Google candidate evaluation. The default component filter is `country:US`; for
 existing environments, remove `locality:Worcester` from `GOOGLE_MAPS_COMPONENTS`
 to allow nearby towns. Ambiguous or review-required addresses cannot silently
-reach the matrix service. Mobile selection and trusted backend validation
-references are still pending. See [Phase 7 foundation](docs/phase-7-foundation.md)
-and [candidate evaluation and manual checks](docs/phase-7-address-candidates.md).
+reach the matrix service. Mobile selection and signed backend confirmations are
+implemented. See [Phase 8 acceptance](docs/phase-8-acceptance.md) for the current
+driver flow, automated evidence and remaining native checks.
 
 ## Routing strategies
 
