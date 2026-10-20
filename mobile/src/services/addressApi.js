@@ -61,7 +61,9 @@ export async function ensureConfirmedAddress(address, { validate = validateAddre
   if (candidates.length !== 1 || candidate.requires_review || !result.lookup_reference
     || (location && candidate.place_id !== location.place_id)
     || (address.unit ?? null) !== (result.unit ?? null)) {
-    throw new Error('The destination needs review. Remove and add this order again, or check the configured restaurant address.');
+    const error = new Error('The destination needs review. Use the order’s ••• menu to rescan and confirm its location.');
+    error.code = 'order_location_review_required';
+    throw error;
   }
   return confirm(input, result.lookup_reference, candidate.candidate_id, { signal });
 }

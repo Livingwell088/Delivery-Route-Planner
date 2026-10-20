@@ -1,7 +1,7 @@
 # Phase 8 Step 5: Reorder stops and explicitly recalculate
 
-Step 4 is committed as `23a16b0` on `endtoend`. Step 5 remains uncommitted for
-review. This step exposes the existing fixed-sequence backend contract to the
+Step 4 is committed as `23a16b0`; Step 5 as `59089b7` on `endtoend`.
+This step exposes the existing fixed-sequence backend contract to the
 single driver. It adds no dispatcher or multi-driver behavior.
 
 **October 20 UI update:** The controls below were simplified after driver review.

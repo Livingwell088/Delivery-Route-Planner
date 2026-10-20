@@ -62,3 +62,42 @@ export function createSessionWriter(storage) {
     return pending;
   };
 }
+
+/** Never overwrite unread saved data after a failed restore. Only the latest save reports status. */
+export function createSessionPersistence(storage, onStatus = () => {}) {
+  const write = createSessionWriter(storage);
+  let writable = false;
+  let version = 0;
+  let latestText = null;
+  const save = async (text) => {
+    if (!writable) return false;
+    latestText = text;
+    const current = ++version;
+    try {
+      await write(text);
+      if (current === version) onStatus({ kind: 'ready' });
+      return true;
+    } catch {
+      if (current === version) onStatus({ kind: 'save_failed' });
+      return false;
+    }
+  };
+  return {
+    async restore() {
+      writable = false;
+      try {
+        const text = await storage.getItem(ACTIVE_SESSION_KEY);
+        const restored = decodeActiveSession(text);
+        writable = true;
+        onStatus({ kind: 'ready' });
+        return restored;
+      } catch (error) {
+        onStatus({ kind: 'restore_failed' });
+        throw error;
+      }
+    },
+    save,
+    retrySave: () => latestText === null ? Promise.resolve(false) : save(latestText),
+    startNewRun() { writable = true; latestText = null; version++; onStatus({ kind: 'ready' }); },
+  };
+}

@@ -1,7 +1,7 @@
 # Simpler Orders and Route pages — October 20, 2026
 
 This updates the uncommitted Step 5 UI following driver feedback that the pages
-offered too many choices. Nothing in this update is committed.
+offered too many choices. These adjustments are included in Step 5 commit `59089b7`.
 
 ## Normal workflow
 

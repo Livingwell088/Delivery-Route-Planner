@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, SafeAreaView, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Linking, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Header } from './components/Header';
 import { AppButton } from './components/AppButton';
+import { SessionRecoveryNotice } from './components/SessionRecoveryNotice';
 import { NAVIGATION_PREFERENCE_KEY } from './constants/storage';
 import { DEFAULT_RESTAURANT, mockReceipt } from './data/mockReceipts';
 import { useAddressReview } from './hooks/useAddressReview';
@@ -15,17 +16,17 @@ import { RouteScreen } from './screens/RouteScreen';
 import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
-import { createNavigationRoute } from './services/navigation';
+import { openRouteNavigation } from './services/navigationHandoff';
 import { createOrderDraftFromReceipt, createManualReceiptDraft } from './services/receiptOrderDraft';
 import { MAX_ACTIVE_ORDERS, beginReceiptEntry, prepareReceiptEntry, commitReceiptEntry,
   receiptFingerprintsForEntry, removeReceiptOrder, receiptEntryRoutePreference } from './services/receiptEntry';
 import { optimizeRoute, evaluateRoute } from './services/routeApi';
 import { addressReviewError, selectedAddressCandidate, confirmAddressForOrder } from './services/addressReview';
 import { confirmAddress, ensureConfirmedAddress } from './services/addressApi';
-import { ACTIVE_SESSION_KEY, createSessionWriter, decodeActiveSession, encodeActiveSession } from './services/activeSession';
+import { createSessionPersistence, encodeActiveSession } from './services/activeSession';
 import { colors } from './theme/colors';
 import { createRoutePlan, changeRouteInputs, beginRouteRequest, isCurrentRouteRequest,
-  prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest, canNavigateRoute,
+  prepareRouteRequest, completeRouteRequest, failRouteRequest, cancelRouteRequest, expireRoutePlan, nextConfirmationExpiry,
   moveRouteStop, ordersInRouteOrder } from './services/routePlan';
 
 export default function App() {
@@ -67,34 +68,65 @@ export default function App() {
     setRestaurantState(value);
   };
   const [revalidateAll, setRevalidateAll] = useState(false);
-  const writeSession = useRef(createSessionWriter(AsyncStorage));
+  const mounted = useRef(true);
+  const restoreBusy = useRef(false);
+  const navigationBusy = useRef(false);
+  const [storageStatus, setStorageStatus] = useState({ kind: 'loading' });
+  const persistence = useRef(null);
+  if (!persistence.current) persistence.current = createSessionPersistence(AsyncStorage, (status) => {
+    if (mounted.current) setStorageStatus(status);
+  });
+  const [, setClockTick] = useState(0);
   const needsRestaurant = !restaurant || Date.parse(restaurant.validated_location.expires_at) <= Date.now();
   const originReview = useAddressReview(DEFAULT_RESTAURANT.formatted_address,
     hydrated && screen === 'orders' && orders.length > 0 && needsRestaurant);
 
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(ACTIVE_SESSION_KEY).then((text) => {
-      if (!active) return;
-      const restored = decodeActiveSession(text);
+  const restoreRun = async () => {
+    if (restoreBusy.current) return;
+    restoreBusy.current = true;
+    setHydrated(false);
+    try {
+      const restored = await persistence.current.restore();
+      if (!mounted.current) return;
       setOrders(restored.orders, restored.routePreference);
       setFingerprints(restored.fingerprints);
       if (restored.orders.length) setScreen('orders');
       if (restored.discarded) Alert.alert('Previous run cleared', 'The saved delivery run expired or could not be restored. Scan the current orders again.');
-    }).catch(() => {
-      if (active) Alert.alert('Unable to restore orders', 'Local storage is unavailable. Your previous orders could not be loaded.');
-    }).finally(() => { if (active) setHydrated(true); });
-    return () => { active = false; };
+    } catch { /* The persistent recovery notice offers retry without overwriting saved data. */ }
+    finally { restoreBusy.current = false; if (mounted.current) setHydrated(true); }
+  };
+
+  useEffect(() => {
+    mounted.current = true;
+    void restoreRun();
+    return () => { mounted.current = false; };
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    writeSession.current(encodeActiveSession(orders, acceptedReceiptFingerprints, Date.now(), {
+    void persistence.current.save(encodeActiveSession(orders, acceptedReceiptFingerprints, Date.now(), {
       sequence: routePlan.sequence, source: routePlan.sequenceSource,
-    })).catch(() => {
-      Alert.alert('Orders not saved', 'This run is available now, but could not be saved for an app restart.');
-    });
+    }));
   }, [orders, acceptedReceiptFingerprints, hydrated, routePlan.sequence, routePlan.sequenceSource]);
+
+  useEffect(() => {
+    let timer;
+    const refresh = () => {
+      setClockTick((value) => value + 1);
+      const next = expireRoutePlan(planRef.current, ordersRef.current, restaurantRef.current);
+      if (next !== planRef.current) updatePlan(next);
+    };
+    const schedule = () => {
+      const deadline = nextConfirmationExpiry(ordersRef.current, restaurantRef.current);
+      if (deadline !== null) timer = setTimeout(() => { refresh(); schedule(); }, Math.min(2147483647, Math.max(1, deadline - Date.now() + 1)));
+    };
+    refresh();
+    schedule();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { clearTimeout(timer); refresh(); schedule(); }
+    });
+    return () => { clearTimeout(timer); subscription.remove(); };
+  }, [orders, restaurant, routePlan.status]);
 
   useEffect(() => () => {
     routeAbort.current?.abort();
@@ -109,7 +141,7 @@ export default function App() {
       if (value === 'apple' || value === 'google') {
         setNavigationApp(value);
       }
-    });
+    }).catch(() => { /* Keep the usable default if the preference cannot be read. */ });
   }, []);
 
   const clearReceipt = () => {
@@ -122,6 +154,10 @@ export default function App() {
 
   const beginReceipt = (replacementOrderId = null, destination = 'scanner') => {
     if (busy.current || !hydrated) return false;
+    if (storageStatus.kind === 'restore_failed') {
+      Alert.alert('Saved run unavailable', 'Retry loading your saved orders or choose Start new run first.');
+      return false;
+    }
     try {
       const entry = beginReceiptEntry(ordersRef.current, replacementOrderId);
       clearReceipt();
@@ -199,7 +235,7 @@ export default function App() {
       const selected = selectedAddressCandidate(addressReview, draft.address.formatted_address);
       const address = await confirmAddress(draft.address.formatted_address,
         addressReview.lookupReference, selected.candidate_id);
-      if (entryRef.current !== entry) return;
+      if (!mounted.current || entryRef.current !== entry) return;
       const confirmedOrder = confirmAddressForOrder(prepared.draft, addressReview, address);
       const committed = commitReceiptEntry(ordersRef.current, fingerprintsRef.current, entry, confirmedOrder, prepared.receiptFingerprints);
       const preference = receiptEntryRoutePreference(planRef.current, entry, confirmedOrder.order_id);
@@ -245,7 +281,9 @@ export default function App() {
       }
       const currentOrders = [];
       for (const order of ordersRef.current) {
-        currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll, signal: controller.signal }) });
+        try {
+          currentOrders.push({ ...order, address: await ensureConfirmedAddress(order.address, { force: revalidateAll, signal: controller.signal }) });
+        } catch (caught) { caught.orderId = order.order_id; throw caught; }
         if (!current()) return;
       }
       if (!current()) return;
@@ -266,10 +304,14 @@ export default function App() {
     } catch (caught) {
       if (!current()) return;
       updatePlan(failRouteRequest(planRef.current, ticket, caught instanceof Error ? caught.message : 'Unable to calculate this route.'));
-      if (originNeedsReview && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
-      if (caught?.code === 'location_review_required') {
+      if (originNeedsReview && !caught.orderId && !['map_usage_limit_reached', 'map_usage_unavailable', 'map_provider_rate_limited', 'map_provider_configuration_error'].includes(caught?.code)) originReview.retry();
+      if (caught?.code === 'location_review_required' && !caught.orderId) {
         setRestaurant(null);
         setRevalidateAll(true);
+      }
+      if (caught.orderId && ['order_location_review_required', 'location_review_required'].includes(caught?.code)) {
+        setScreen('orders');
+        caught.message = `Order #${caught.orderId} needs location review. Use its ••• menu to rescan and confirm the destination.`;
       }
       setError(caught instanceof Error ? caught.message : 'Unable to calculate this route.');
     } finally {
@@ -308,24 +350,26 @@ export default function App() {
 
   const saveNavigationApp = async (value) => {
     setNavigationApp(value);
-    await AsyncStorage.setItem(NAVIGATION_PREFERENCE_KEY, value);
+    try { await AsyncStorage.setItem(NAVIGATION_PREFERENCE_KEY, value); }
+    catch { Alert.alert('Preference not saved', 'Your choice works now but could not be saved for a restart.'); }
   };
 
   const openRoute = async () => {
-    if (!canNavigateRoute(planRef.current, ordersRef.current, restaurantRef.current)) {
+    if (navigationBusy.current || busy.current) return;
+    navigationBusy.current = true;
+    try {
+      const result = await openRouteNavigation({
+        getCurrent: () => ({ plan: planRef.current, orders: ordersRef.current, restaurant: restaurantRef.current }),
+        navigationApp, platform: Platform, openURL: (url) => Linking.openURL(url),
+        notifyFallback: () => Alert.alert('Multi-stop navigation unavailable',
+          'This version of Apple Maps cannot receive the complete route. Opening the first stop instead.'),
+      });
+      if (!mounted.current) return;
+      if (result.status === 'opened') return;
+      if (result.status === 'failed') { Alert.alert('Unable to open navigation', result.message); return; }
+      updatePlan(expireRoutePlan(planRef.current, ordersRef.current, restaurantRef.current));
       Alert.alert('Route needs recalculation', 'Review your current orders and calculate the route again before opening navigation.');
-      return;
-    }
-    const navigationRoute = createNavigationRoute(navigationApp, planRef.current.route.ordered_stops, restaurantRef.current);
-    if (!navigationRoute) return;
-
-    if (!navigationRoute.includesAllStops) {
-      Alert.alert(
-        'Multi-stop navigation unavailable',
-        'This version of Apple Maps cannot receive the complete route. Opening the first stop instead.',
-      );
-    }
-    await Linking.openURL(navigationRoute.url);
+    } finally { navigationBusy.current = false; }
   };
 
   return (
@@ -335,6 +379,13 @@ export default function App() {
       <Header screen={screen} onNavigate={(next) => {
         if (!busy.current && hydrated) { clearReceipt(); setScreen(next); }
       }} orderCount={orders.length} />
+      <SessionRecoveryNotice status={storageStatus} onRetryRestore={restoreRun}
+        onRetrySave={() => { void persistence.current.retrySave(); }}
+        onStartNew={() => Alert.alert('Start a new run?', 'This will replace the saved run that could not be loaded.', [
+          { text: 'Cancel', style: 'cancel' }, { text: 'Start new run', style: 'destructive', onPress: () => {
+            persistence.current.startNewRun(); clearReceipt(); setOrders([]); setFingerprints([]); setScreen('home');
+          } },
+        ])} />
       {screen === 'home' && (
         <HomeScreen
           capturedReceipt={capturedReceipt}

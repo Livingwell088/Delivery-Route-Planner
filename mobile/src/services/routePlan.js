@@ -104,3 +104,16 @@ export function canNavigateRoute(plan, orders, restaurant, now = Date.now()) {
       return location?.validation_reference && Date.parse(location.expires_at) > now;
     });
 }
+
+export function nextConfirmationExpiry(orders, restaurant, now = Date.now()) {
+  const future = [restaurant, ...orders.map((order) => order.address)]
+    .map((address) => Date.parse(address?.validated_location?.expires_at)).filter((value) => value > now);
+  return future.length ? Math.min(...future) : null;
+}
+
+export function expireRoutePlan(plan, orders, restaurant, now = Date.now()) {
+  if (plan.status !== 'ready' || canNavigateRoute(plan, orders, restaurant, now)) return plan;
+  return { ...plan, status: orders.length ? 'needs_calculation' : 'empty', revision: plan.revision + 1,
+    route: null, departureAt: null, calculatedAt: null,
+    error: 'A location confirmation expired or changed. Update the route before opening navigation.' };
+}
