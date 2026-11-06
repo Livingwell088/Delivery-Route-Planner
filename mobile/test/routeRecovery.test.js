@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRoutePlan, changeRouteInputs, beginRouteRequest, prepareRouteRequest, completeRouteRequest,
   expireRoutePlan, nextConfirmationExpiry, canNavigateRoute } from '../src/services/routePlan.js';
-import { openRouteNavigation } from '../src/services/navigationHandoff.js';
+import { openRouteNavigation as handoff } from '../src/services/navigationHandoff.js';
+const openRouteNavigation = (options) => handoff({ platform: { OS: 'android', Version: 35 }, canOpenURL: async () => true,
+  androidMaps: { isAvailable: async () => true, open: (url) => options.openURL(url) }, ...options });
 import { createSessionPersistence } from '../src/services/activeSession.js';
 
 const now = Date.parse('2026-10-20T18:00:00Z');

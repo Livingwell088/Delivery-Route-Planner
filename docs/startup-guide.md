@@ -83,6 +83,19 @@ npm start -- --clear
 Then open the installed **RouteRunner** app from the emulator's app drawer.
 Reload the app from its development menu if necessary. Do not open Expo Go for
 the OCR workflow: native ML Kit requires the project's native Android build.
+
+Phase 9 navigation availability adds native configuration and an Android adapter.
+Before testing that change, run the following from `mobile/`, then use
+`npm run android` to rebuild/install. Metro reload alone is insufficient. Expo
+SDK 57 regenerates native folders by default; `--no-clean` applies incremental
+changes to the existing generated project.
+
+```powershell
+.\node_modules\.bin\expo.cmd prebuild --platform android --no-install --no-clean
+```
+
+See [Phase 9 launch recovery](phase-9-navigation-recovery.md) for scope and pending
+native acceptance. iOS likewise requires a native rebuild on macOS.
 Do not assume Metro's `a` shortcut launches the installed custom app; use
 `npm run android` if you are unsure.
 

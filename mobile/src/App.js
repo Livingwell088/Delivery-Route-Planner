@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Linking, NativeModules, Platform, SafeAreaView, StyleSheet, View } from 'react-native';
 
 import { Header } from './components/Header';
 import { AppButton } from './components/AppButton';
@@ -17,6 +17,7 @@ import { ReceiptScannerScreen } from './screens/ReceiptScannerScreen';
 import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { openRouteNavigation } from './services/navigationHandoff';
+import { createNavigationPreference } from './services/navigationPreferences';
 import { createOrderDraftFromReceipt, createManualReceiptDraft } from './services/receiptOrderDraft';
 import { MAX_ACTIVE_ORDERS, beginReceiptEntry, prepareReceiptEntry, commitReceiptEntry,
   receiptFingerprintsForEntry, removeReceiptOrder, receiptEntryRoutePreference } from './services/receiptEntry';
@@ -47,6 +48,8 @@ export default function App() {
     setOrdersState(next);
   };
   const [navigationApp, setNavigationApp] = useState('google');
+  const navigationAppRef = useRef('google');
+  const navigationPreference = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [capturedReceipt, setCapturedReceipt] = useState(null);
@@ -71,6 +74,11 @@ export default function App() {
   const mounted = useRef(true);
   const restoreBusy = useRef(false);
   const navigationBusy = useRef(false);
+  if (!navigationPreference.current) navigationPreference.current = createNavigationPreference(
+    AsyncStorage, NAVIGATION_PREFERENCE_KEY,
+    (value) => { navigationAppRef.current = value; if (mounted.current) setNavigationApp(value); },
+    () => { if (mounted.current) Alert.alert('Preference not saved', 'Your choice works now but could not be saved for a restart.'); },
+  );
   const [storageStatus, setStorageStatus] = useState({ kind: 'loading' });
   const persistence = useRef(null);
   if (!persistence.current) persistence.current = createSessionPersistence(AsyncStorage, (status) => {
@@ -137,11 +145,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    AsyncStorage.getItem(NAVIGATION_PREFERENCE_KEY).then((value) => {
-      if (value === 'apple' || value === 'google') {
-        setNavigationApp(value);
-      }
-    }).catch(() => { /* Keep the usable default if the preference cannot be read. */ });
+    void navigationPreference.current.restore();
   }, []);
 
   const clearReceipt = () => {
@@ -348,25 +352,45 @@ export default function App() {
     ]);
   };
 
-  const saveNavigationApp = async (value) => {
-    setNavigationApp(value);
-    try { await AsyncStorage.setItem(NAVIGATION_PREFERENCE_KEY, value); }
-    catch { Alert.alert('Preference not saved', 'Your choice works now but could not be saved for a restart.'); }
-  };
+  const saveNavigationApp = (value) => { void navigationPreference.current.select(value); };
 
-  const openRoute = async () => {
+  const navigationDialog = (title, message, choices) => new Promise((resolve) => {
+    if (!mounted.current) { resolve(null); return; }
+    Alert.alert(title, message, [
+      ...choices.map((choice) => ({ text: choice.label, onPress: () => resolve(choice.value) })),
+      { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+    ], { cancelable: true, onDismiss: () => resolve(null) });
+  });
+
+  const openRoute = async ({ forceChoice = false } = {}) => {
     if (navigationBusy.current || busy.current) return;
     navigationBusy.current = true;
     try {
       const result = await openRouteNavigation({
-        getCurrent: () => ({ plan: planRef.current, orders: ordersRef.current, restaurant: restaurantRef.current }),
-        navigationApp, platform: Platform, openURL: (url) => Linking.openURL(url),
-        notifyFallback: () => Alert.alert('Multi-stop navigation unavailable',
-          'This version of Apple Maps cannot receive the complete route. Opening the first stop instead.'),
+        getCurrent: () => ({ plan: planRef.current, orders: ordersRef.current, restaurant: restaurantRef.current,
+          navigationApp: navigationAppRef.current, active: mounted.current }),
+        navigationApp: navigationAppRef.current, platform: Platform, openURL: (url) => Linking.openURL(url),
+        canOpenURL: (url) => Linking.canOpenURL(url), androidMaps: NativeModules.RouteNavigation, forceChoice,
+        chooseAlternative: ({ availability, alternatives }) => navigationDialog('Choose navigation',
+          forceChoice ? 'Choose an option for this launch. Your saved preference stays the same.'
+            : availability === 'unknown' ? 'The preferred app could not be verified. Choose an option for this launch.'
+              : 'The preferred app is unavailable on this device. Choose an option for this launch.',
+          alternatives.map((option) => ({ label: option.label, value: option }))),
+        notifyFallback: () => navigationDialog('One-stop navigation',
+          'This option opens the first delivery only. The complete route and restaurant return stay in RouteRunner.',
+          [{ label: 'Continue', value: true }]),
       });
       if (!mounted.current) return;
-      if (result.status === 'opened') return;
-      if (result.status === 'failed') { Alert.alert('Unable to open navigation', result.message); return; }
+      if (result.status === 'opened' || result.status === 'cancelled') return;
+      if (result.status === 'failed') {
+        Alert.alert('Unable to open navigation', result.message, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Retry', onPress: () => { void openRoute(); } },
+          { text: 'Other options', onPress: () => { void openRoute({ forceChoice: true }); } },
+        ]);
+        return;
+      }
+      if (result.status === 'invalid') { Alert.alert('Review navigation destinations', result.message); return; }
       updatePlan(expireRoutePlan(planRef.current, ordersRef.current, restaurantRef.current));
       Alert.alert('Route needs recalculation', 'Review your current orders and calculate the route again before opening navigation.');
     } finally { navigationBusy.current = false; }

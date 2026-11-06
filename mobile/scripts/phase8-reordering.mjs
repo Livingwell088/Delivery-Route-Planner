@@ -85,7 +85,7 @@ assert.equal(plan.sequenceSource, 'optimized');
 assert.equal(plan.route.route_mode, 'optimized');
 assert.deepEqual(new Set(plan.sequence), new Set(orders.map((order) => order.order_id)));
 const beforeRecovery = await usage();
-const handoff = { getCurrent: () => ({ plan, orders, restaurant: origin }), navigationApp: 'google', platform: { OS: 'android', Version: 35 } };
+const handoff = { getCurrent: () => ({ plan, orders, restaurant: origin }), navigationApp: 'google', platform: { OS: 'ios', Version: '18.4' }, canOpenURL: async () => true };
 assert.equal((await openRouteNavigation({ ...handoff, openURL: async () => { throw new Error('Simulated Maps failure'); } })).status, 'failed');
 assert.equal(plan.status, 'ready');
 const links = [];

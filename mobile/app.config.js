@@ -9,6 +9,7 @@ export default ({ config }) => {
     },
     plugins: [
       ...(config.plugins ?? []),
+      './plugins/withNavigationApps.cjs',
       ['react-native-maps', {
         ...(mapsApiKey ? { androidGoogleMapsApiKey: mapsApiKey } : {}),
         ...(iosMapsApiKey ? { iosGoogleMapsApiKey: iosMapsApiKey } : {}),

@@ -1,12 +1,8 @@
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
-
-const NAVIGATION_OPTIONS = [
-  { value: 'google', label: 'Google Maps' },
-  { value: 'apple', label: 'Apple Maps' },
-];
+import { navigationAppOptions } from '../services/navigationPreferences';
 
 export function SettingsScreen({ value, onChange }) {
   return (
@@ -16,9 +12,14 @@ export function SettingsScreen({ value, onChange }) {
       <Text style={commonStyles.subtitle}>
         RouteRunner will open each confirmed stop using this app.
       </Text>
-      {NAVIGATION_OPTIONS.map((option) => (
+      {value === 'apple' && Platform.OS !== 'ios' && <Text style={commonStyles.hint}>
+        Your saved Apple Maps preference is unavailable on this device. Choose Google Maps to change it.
+      </Text>}
+      {navigationAppOptions(Platform).map((option) => (
         <Pressable
           key={option.value}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: value === option.value }}
           style={[styles.option, value === option.value && styles.selected]}
           onPress={() => onChange(option.value)}
         >
@@ -27,7 +28,7 @@ export function SettingsScreen({ value, onChange }) {
         </Pressable>
       ))}
       <Text style={commonStyles.hint}>
-        Apple Maps links work best on iPhone. Your choice is saved on this device.
+        Your choice is saved on this device. Availability is checked when you open navigation.
       </Text>
     </ScrollView>
   );
