@@ -46,9 +46,9 @@ test('navigation exports current evaluated buildings and confirmed restaurant', 
     platform: { OS: 'ios', Version: '18.4' }, now: () => now, openURL: async (url) => { urls.push(url); } });
   assert.equal(result.status, 'opened');
   const url = new URL(urls[0]);
-  assert.equal(url.searchParams.get('source'), '42,-71');
+  assert.equal(url.searchParams.get('origin'), '42,-71');
   assert.equal(url.searchParams.get('destination'), '42,-71');
-  assert.deepEqual(url.searchParams.getAll('waypoint'), ['42,-71', '42.1,-71']);
+  assert.deepEqual(url.searchParams.get('waypoints').split('|'), ['42,-71', '42.1,-71']);
 });
 
 test('expired and changed routes are blocked even when time passes during the fallback notice', async () => {
@@ -57,6 +57,7 @@ test('expired and changed routes are blocked even when time passes during the fa
     let clock = now;
     const result = await openRouteNavigation({ getCurrent: () => run, navigationApp: 'apple',
       platform: { OS: 'ios', Version: '18.3' }, now: () => clock,
+      canOpenURL: async () => false, chooseAlternative: async ({ alternatives }) => alternatives[0],
       notifyFallback: async () => {
         if (change === 'expire') clock = now + 30 * 60000;
         else run = { ...run, plan: { ...run.plan } };

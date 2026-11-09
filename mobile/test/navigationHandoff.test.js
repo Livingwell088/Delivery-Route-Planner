@@ -52,14 +52,26 @@ test('native Android launches only through the package adapter; Google iOS uses 
   assert.match(appleRun.urls[0], /^comgooglemapsurl:\/\/www.google.com\/maps\/dir\//);
 });
 
-test('missing app offers an available alternative without changing preference', async () => {
-  const run = setup({ canOpenURL: async (url) => url === 'maps://', chooseAlternative: async ({ alternatives }) => alternatives[0] });
+test('missing Google app never offers Apple even when its handler is available', async () => {
+  const run = setup({ canOpenURL: async (url) => url === 'maps://',
+    chooseAlternative: async ({ alternatives }) => { assert.deepEqual(alternatives.map((item) => item.app), ['google']); return alternatives[0]; },
+    notifyFallback: async () => true });
   const before = structuredClone(run.get());
   const result = await openRouteNavigation(run.options);
   assert.equal(result.status, 'opened');
-  assert.equal(result.app, 'apple');
-  assert.match(run.urls[0], /^https:\/\/maps.apple.com\/directions/);
+  assert.equal(result.app, 'google');
+  assert.match(run.urls[0], /^https:\/\/www.google.com\/maps\/dir/);
   assert.deepEqual(run.get(), before);
+});
+
+test('stale Apple preference launches Google on iPhone without probing Apple', async () => {
+  const probes = [];
+  const run = setup({ navigationApp: 'apple', canOpenURL: async (url) => { probes.push(url); return true; } });
+  const result = await openRouteNavigation(run.options);
+  assert.equal(result.status, 'opened');
+  assert.equal(result.app, 'google');
+  assert.deepEqual(probes, ['comgooglemapsurl://']);
+  assert.match(run.urls[0], /^comgooglemapsurl:\/\/www.google.com\/maps\/dir\//);
 });
 
 test('unknown availability and unsupported saved Apple preference permit only explicit fallback', async () => {
@@ -77,14 +89,16 @@ test('unknown availability and unsupported saved Apple preference permit only ex
 
 test('fallback waits for Continue and canceled/dismissed dialogs never launch', async () => {
   const gate = deferred();
-  const run = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' }, notifyFallback: () => gate.promise });
+  const run = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' }, canOpenURL: async () => false,
+    chooseAlternative: async ({ alternatives }) => alternatives[0], notifyFallback: () => gate.promise });
   const pending = openRouteNavigation(run.options);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(run.urls.length, 0);
   gate.resolve(true);
   assert.equal((await pending).status, 'opened');
   for (const answer of [false, null, undefined]) {
-    const cancelled = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' }, notifyFallback: async () => answer });
+    const cancelled = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' }, canOpenURL: async () => false,
+    chooseAlternative: async ({ alternatives }) => alternatives[0], notifyFallback: async () => answer });
     assert.equal((await openRouteNavigation(cancelled.options)).status, 'cancelled');
     assert.equal(cancelled.urls.length, 0);
   }
@@ -144,24 +158,24 @@ test('preference restore cannot overwrite a newer choice; serialized writes end 
     writes.push(value); if (writes.length === 1) await firstWrite.promise;
   } }, 'pref', (value) => changes.push(value));
   const restoring = preference.restore();
-  const first = preference.select('apple');
+  const first = preference.select('google');
   const second = preference.select('google');
   read.resolve('apple');
   await restoring;
-  assert.deepEqual(changes, ['apple', 'google']);
+  assert.deepEqual(changes, ['google', 'google']);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(writes, ['apple']);
+  assert.deepEqual(writes, ['google']);
   firstWrite.resolve();
   await Promise.all([first, second]);
-  assert.deepEqual(writes, ['apple', 'google']);
+  assert.deepEqual(writes, ['google', 'google']);
 });
 
-test('invalid/read-failed preferences, retained Apple choice, write failure and retry remain usable', async () => {
+test('old Apple preferences become Google; unsupported selections cannot be saved; storage failure remains recoverable', async () => {
   for (const value of ['bad', null, 'apple']) {
     const changes = [];
     const pref = createNavigationPreference({ getItem: async () => value }, 'pref', (next) => changes.push(next));
     await pref.restore();
-    assert.deepEqual(changes, [value === 'apple' ? 'apple' : 'google']);
+    assert.deepEqual(changes, ['google']);
   }
   const changes = [];
   let failures = 0;
@@ -172,12 +186,14 @@ test('invalid/read-failed preferences, retained Apple choice, write failure and 
   assert.deepEqual(changes, []);
   assert.equal(await pref.select('invalid'), false);
   assert.equal(await pref.select('apple'), false);
+  assert.deepEqual(changes, []);
+  assert.equal(await pref.select('google'), false);
   assert.equal(failures, 1);
-  assert.deepEqual(changes, ['apple']);
+  assert.deepEqual(changes, ['google']);
   fail = false;
   assert.equal(await pref.select('google'), true);
   assert.deepEqual(navigationAppOptions(android).map((option) => option.value), ['google']);
-  assert.deepEqual(navigationAppOptions(ios).map((option) => option.value), ['google', 'apple']);
+  assert.deepEqual(navigationAppOptions(ios).map((option) => option.value), ['google']);
 });
 
 test('native plugin preserves existing queries and registers exactly once; changed template fails explicitly', () => {
@@ -195,10 +211,11 @@ test('native plugin preserves existing queries and registers exactly once; chang
 test('an obsolete preference write failure cannot report a newer successful choice as unsaved', async () => {
   const gate = deferred();
   let failures = 0;
-  const pref = createNavigationPreference({ setItem: async (_, value) => {
-    if (value === 'apple') { await gate.promise; throw Error(); }
+  let writes = 0;
+  const pref = createNavigationPreference({ setItem: async () => {
+    if (++writes === 1) { await gate.promise; throw Error(); }
   } }, 'pref', () => {}, () => failures++);
-  const first = pref.select('apple');
+  const first = pref.select('google');
   const second = pref.select('google');
   gate.resolve();
   assert.deepEqual(await Promise.all([first, second]), [false, true]);
@@ -233,6 +250,7 @@ test('single-destination handoff opens each selected delivery and restaurant wit
 
 test('failed fallback launch returns the same destination metadata for a safe UI retry', async () => {
   const run = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' },
+    canOpenURL: async () => false, chooseAlternative: async ({ alternatives }) => alternatives[0],
     notifyFallback: async () => true, openURL: async () => { throw Error(); } });
   const result = await openRouteNavigation(run.options);
   assert.equal(result.status, 'failed');

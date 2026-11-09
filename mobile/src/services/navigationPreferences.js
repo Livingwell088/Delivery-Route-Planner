@@ -1,6 +1,7 @@
-export const navigationAppOptions = (platform) => platform?.OS === 'ios'
-  ? [{ value: 'google', label: 'Google Maps' }, { value: 'apple', label: 'Apple Maps' }]
-  : [{ value: 'google', label: 'Google Maps' }];
+// Apple navigation is retained in the builders but disabled in the current product.
+export const navigationAppOptions = () => [{ value: 'google', label: 'Google Maps' }];
+export const normalizeNavigationApp = (value) => navigationAppOptions().some((option) => option.value === value)
+  ? value : 'google';
 
 export function createNavigationPreference(storage, key, onChange, onSaveFailure = () => {}) {
   let revision = 0;
@@ -10,11 +11,11 @@ export function createNavigationPreference(storage, key, onChange, onSaveFailure
       const started = revision;
       try {
         const value = await storage.getItem(key);
-        if (started === revision) onChange(value === 'apple' || value === 'google' ? value : 'google');
+        if (started === revision) onChange(normalizeNavigationApp(value));
       } catch { /* Keep the current usable choice. */ }
     },
     select(value) {
-      if (value !== 'google' && value !== 'apple') return Promise.resolve(false);
+      if (!navigationAppOptions().some((option) => option.value === value)) return Promise.resolve(false);
       const selected = ++revision;
       onChange(value);
       pending = pending.then(async () => {

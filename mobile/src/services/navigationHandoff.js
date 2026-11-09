@@ -1,7 +1,7 @@
 import { canNavigateRoute } from './routePlan.js';
 import { createNavigationRoute } from './navigationLinks.js';
 import { navigationAvailability, nativeNavigationURL } from './navigationCapabilities.js';
-import { navigationAppOptions } from './navigationPreferences.js';
+import { navigationAppOptions, normalizeNavigationApp } from './navigationPreferences.js';
 
 /** Recheck fresh state after each asynchronous probe/dialog, immediately before launch. */
 export async function openRouteNavigation({ getCurrent, navigationApp, platform, openURL,
@@ -21,7 +21,7 @@ export async function openRouteNavigation({ getCurrent, navigationApp, platform,
   let prepared;
   try {
     const probe = (app) => navigationAvailability(app, platform, { canOpenURL, androidMaps });
-    let app = navigationApp;
+    let app = normalizeNavigationApp(navigationApp);
     const availability = await probe(app);
     if (!currentRoute()) return { status: 'needs_calculation' };
     let transport = 'native';

@@ -1,4 +1,4 @@
-import { Platform, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { colors } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
@@ -12,10 +12,7 @@ export function SettingsScreen({ value, onChange }) {
       <Text style={commonStyles.subtitle}>
         RouteRunner will open each confirmed stop using this app.
       </Text>
-      {value === 'apple' && Platform.OS !== 'ios' && <Text style={commonStyles.hint}>
-        Your saved Apple Maps preference is unavailable on this device. Choose Google Maps to change it.
-      </Text>}
-      {navigationAppOptions(Platform).map((option) => (
+      {navigationAppOptions().map((option) => (
         <Pressable
           key={option.value}
           accessibilityRole="radio"
