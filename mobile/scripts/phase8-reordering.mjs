@@ -91,6 +91,21 @@ assert.equal(plan.status, 'ready');
 const links = [];
 assert.equal((await openRouteNavigation({ ...handoff, openURL: async (url) => links.push(url) })).status, 'opened');
 assert.equal(links.length, 1);
+const sequenceBeforeNavigation = [...plan.sequence];
+for (let destinationIndex = 0; destinationIndex <= plan.route.ordered_stops.length; destinationIndex++) {
+  const legLinks = [];
+  const result = await openRouteNavigation({ ...handoff, mode: 'single_destination', destinationIndex,
+    notifyFallback: () => assert.fail('Explicit single-stop selection must not repeat the fallback notice'),
+    openURL: async (url) => legLinks.push(url) });
+  assert.equal(result.status, 'opened');
+  assert.equal(result.destinationIndex, destinationIndex);
+  const destination = destinationIndex === plan.route.ordered_stops.length ? origin : plan.route.ordered_stops[destinationIndex].address;
+  const query = new URL(legLinks[0]).searchParams;
+  assert.equal(query.get('destination'), `${destination.coordinates.latitude},${destination.coordinates.longitude}`);
+  assert.equal(query.get('origin'), null);
+  assert.deepEqual(plan.sequence, sequenceBeforeNavigation);
+}
+assert.deepEqual((await usage()).reserved_units, beforeRecovery.reserved_units);
 const text = encodeActiveSession(orders, [], Date.now(), { sequence: plan.sequence, source: plan.sequenceSource });
 let stored = text;
 let failWrite = true;

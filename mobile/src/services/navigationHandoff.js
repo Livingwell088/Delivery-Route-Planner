@@ -14,9 +14,11 @@ export async function openRouteNavigation({ getCurrent, navigationApp, platform,
     return current.active !== false && current.plan === snapshot.plan
       && (snapshot.navigationApp === undefined || current.navigationApp === snapshot.navigationApp)
       && (snapshot.destinationIndex === undefined || current.destinationIndex === snapshot.destinationIndex)
+      && current.navigationSelection === snapshot.navigationSelection
       && canNavigateRoute(current.plan, current.orders, current.restaurant, now());
   };
   if (!currentRoute()) return { status: 'needs_calculation' };
+  let prepared;
   try {
     const probe = (app) => navigationAvailability(app, platform, { canOpenURL, androidMaps });
     let app = navigationApp;
@@ -43,18 +45,19 @@ export async function openRouteNavigation({ getCurrent, navigationApp, platform,
     const link = createNavigationRoute(app, snapshot.plan.route.ordered_stops, snapshot.restaurant, platform,
       { mode, destinationIndex, transport });
     if (!link) return { status: 'invalid', message: 'Review the route destinations and calculate the route again before opening navigation.' };
-    if (!link.includesAllStops) {
+    if (!link.includesAllStops && mode !== 'single_destination') {
       const proceed = await notifyFallback({ app, transport, link });
       if (!currentRoute()) return { status: 'needs_calculation' };
       if (proceed !== true) return { status: 'cancelled' };
     }
     if (!currentRoute()) return { status: 'needs_calculation' };
+    prepared = { app, transport, mode: link.mode, destinationIndex: link.destinationIndex };
     if (transport === 'native' && platform?.OS === 'android' && app === 'google') {
       if (!androidMaps?.open) throw new Error('Native navigation unavailable');
       await androidMaps.open(link.url);
     } else await openURL(transport === 'native' ? nativeNavigationURL(app, platform, link.url) : link.url);
-    return { status: 'opened', app, transport, mode: link.mode, destinationIndex: link.destinationIndex };
+    return { status: 'opened', ...prepared };
   } catch {
-    return { status: 'failed', message: 'Unable to open navigation. Your route is still available; retry or choose another option.' };
+    return { status: 'failed', ...prepared, message: 'Unable to open navigation. Your route is still available; retry or choose another option.' };
   }
 }

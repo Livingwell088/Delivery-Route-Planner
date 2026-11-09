@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '../components/AppButton';
 import { OrderMap } from '../components/OrderMap';
@@ -10,9 +10,12 @@ import { buildRouteReview, formatRouteClock } from '../services/routeReview';
 import { reviewedAddressLabel } from '../services/addressReview';
 
 export function RouteScreen({ route, navigationApp, onNavigate, restaurant, plan, onReviewOrders,
-  orders = [], onMove, onRemove, onRecalculate, onOptimize, error }) {
+  orders = [], onMove, onRemove, onRecalculate, onOptimize, error,
+  navigationSelection = { mode: 'full_route', destinationIndex: 0 }, onNavigationMode,
+  onNavigationDestination, navigationPending = false }) {
   const [editing, setEditing] = useState(false);
   const [details, setDetails] = useState(false);
+  const [more, setMore] = useState(false);
   const ready = plan?.status === 'ready' && Boolean(route);
   const navigationLabel = navigationApp === 'apple' ? 'Apple Maps' : 'Google Maps';
 
@@ -20,13 +23,7 @@ export function RouteScreen({ route, navigationApp, onNavigate, restaurant, plan
     if (plan?.status === 'ready') setEditing(false);
   }, [plan?.status]);
 
-  const moreOptions = () => Alert.alert('Route options',
-    'Update estimates keeps this stop order. Optimize again may choose a different order.', [
-      { text: 'Update estimates', onPress: onRecalculate },
-      { text: 'Optimize again', onPress: onOptimize },
-      { text: 'Back to orders', onPress: onReviewOrders },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const singleDestination = navigationSelection.mode === 'single_destination';
   const options = <View style={styles.options}>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: editing }}
       style={styles.option} onPress={() => setEditing((value) => !value)}>
@@ -36,9 +33,17 @@ export function RouteScreen({ route, navigationApp, onNavigate, restaurant, plan
       style={styles.option} onPress={() => setDetails((value) => !value)}>
       <Text style={styles.optionText}>{details ? 'Hide details' : 'Details'}</Text>
     </Pressable>}
-    <Pressable accessibilityRole="button" style={styles.option} onPress={moreOptions}>
-      <Text style={styles.optionText}>More</Text>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: more }} style={styles.option} onPress={() => setMore((value) => !value)}>
+      <Text style={styles.optionText}>{more ? 'Less' : 'More'}</Text>
     </Pressable>
+    {more && <View style={styles.moreOptions}>
+      {ready && <AppButton secondary disabled={navigationPending}
+        label={singleDestination ? 'Use full-route navigation' : 'Navigate one stop at a time'}
+        onPress={() => { onNavigationMode?.(singleDestination ? 'full_route' : 'single_destination'); setMore(false); }} />}
+      <AppButton secondary label="Update estimates" onPress={() => { setMore(false); onRecalculate(); }} />
+      <AppButton secondary label="Optimize again" onPress={() => { setMore(false); onOptimize(); }} />
+      <AppButton secondary label="Back to orders" onPress={onReviewOrders} />
+    </View>}
   </View>;
 
   if (!ready) {
@@ -65,6 +70,9 @@ export function RouteScreen({ route, navigationApp, onNavigate, restaurant, plan
   }
 
   const review = buildRouteReview(route);
+  const selectedIndex = navigationSelection.destinationIndex;
+  const returning = selectedIndex === review.stops.length;
+  const selectedLabel = returning ? 'Return to restaurant' : `Stop ${selectedIndex + 1} of ${review.stops.length}`;
   return (
     <ScrollView contentContainerStyle={commonStyles.content}>
       <Text style={commonStyles.title}>Your route</Text>
@@ -100,7 +108,25 @@ export function RouteScreen({ route, navigationApp, onNavigate, restaurant, plan
         </View>
         <Text style={commonStyles.hint}>All clocks use Eastern time. Map lines show stop order, not driving roads.</Text>
       </>}
-      {!editing && <AppButton label={`Open in ${navigationLabel}`} onPress={onNavigate} />}
+      {!editing && <>
+        {singleDestination && <View style={styles.infoBox}>
+          <Text style={commonStyles.cardTitle} accessibilityLiveRegion="polite">{selectedLabel}</Text>
+          <Text style={commonStyles.muted}>{returning ? review.restaurant : review.stops[selectedIndex]?.addressLabel}</Text>
+          <Text style={commonStyles.hint}>Select the next destination yourself. Opening Maps does not mark a delivery complete.</Text>
+          <View style={styles.destinationControls}>
+            <AppButton secondary label="Previous" disabled={navigationPending || selectedIndex === 0}
+              onPress={() => onNavigationDestination(selectedIndex - 1)} />
+            <AppButton secondary label="Next" disabled={navigationPending || returning}
+              onPress={() => onNavigationDestination(selectedIndex + 1)} />
+          </View>
+          {!returning && <AppButton secondary label="Return to restaurant" disabled={navigationPending}
+            onPress={() => onNavigationDestination(review.stops.length)} />}
+        </View>}
+        <AppButton disabled={navigationPending}
+          label={navigationPending ? 'Opening navigation…' : singleDestination
+            ? `${returning ? 'Return to restaurant' : `Open stop ${selectedIndex + 1}`} in ${navigationLabel}`
+            : `Open in ${navigationLabel}`} onPress={() => onNavigate()} />
+      </>}
     </ScrollView>
   );
 }
@@ -114,4 +140,6 @@ const styles = StyleSheet.create({
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   option: { minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
   optionText: { color: colors.deepGold, fontWeight: '700' },
+  moreOptions: { width: '100%', gap: 8 },
+  destinationControls: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 });

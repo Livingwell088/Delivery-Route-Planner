@@ -213,3 +213,41 @@ test('iOS introspection preserves existing scheme queries and declares both navi
   }), { projectRoot: process.cwd(), platforms: ['ios'], introspect: true });
   assert.deepEqual(result._internal.modResults.ios.infoPlist.LSApplicationQueriesSchemes, ['existing', 'comgooglemapsurl', 'maps']);
 });
+
+test('single-destination handoff opens each selected delivery and restaurant without advancing or repeating a fallback notice', async () => {
+  for (const destinationIndex of [0, 1, 2]) {
+    const run = setup({ mode: 'single_destination', destinationIndex,
+      notifyFallback: () => assert.fail('Explicit single mode needs no downgrade notice') });
+    const before = structuredClone(run.get());
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await openRouteNavigation(run.options);
+      assert.equal(result.status, 'opened');
+      assert.equal(result.destinationIndex, destinationIndex);
+      const query = new URL(run.urls[attempt]).searchParams;
+      assert.equal(query.get('destination'), ['42.1,-71', '42.2,-71', '42,-71'][destinationIndex]);
+      assert.equal(query.get('origin'), null);
+    }
+    assert.deepEqual(run.get(), before);
+  }
+});
+
+test('failed fallback launch returns the same destination metadata for a safe UI retry', async () => {
+  const run = setup({ navigationApp: 'apple', platform: { OS: 'ios', Version: '18.3' },
+    notifyFallback: async () => true, openURL: async () => { throw Error(); } });
+  const result = await openRouteNavigation(run.options);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.mode, 'single_destination');
+  assert.equal(result.destinationIndex, 0);
+  assert.equal(run.get().plan.status, 'ready');
+});
+
+test('changing navigation mode while an asynchronous probe is pending invalidates that launch', async () => {
+  const gate = deferred();
+  const run = setup({ canOpenURL: () => gate.promise });
+  run.change({ navigationSelection: { mode: 'full_route', destinationIndex: 0 } });
+  const pending = openRouteNavigation(run.options);
+  run.change({ navigationSelection: { mode: 'single_destination', destinationIndex: 0 } });
+  gate.resolve(true);
+  assert.equal((await pending).status, 'needs_calculation');
+  assert.equal(run.urls.length, 0);
+});

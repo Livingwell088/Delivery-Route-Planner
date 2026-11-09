@@ -18,6 +18,7 @@ import { ReceiptRecognitionScreen } from './screens/ReceiptRecognitionScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { openRouteNavigation } from './services/navigationHandoff';
 import { createNavigationPreference } from './services/navigationPreferences';
+import { createNavigationSelection, currentNavigationSelection } from './services/navigationSelection';
 import { createOrderDraftFromReceipt, createManualReceiptDraft } from './services/receiptOrderDraft';
 import { MAX_ACTIVE_ORDERS, beginReceiptEntry, prepareReceiptEntry, commitReceiptEntry,
   receiptFingerprintsForEntry, removeReceiptOrder, receiptEntryRoutePreference } from './services/receiptEntry';
@@ -39,8 +40,17 @@ export default function App() {
   const ordersRef = useRef([]);
   const restaurantRef = useRef(null);
   const routeAbort = useRef(null);
+  const [navigationSelection, setNavigationSelectionState] = useState(null);
+  const navigationSelectionRef = useRef(null);
+  const [navigationPending, setNavigationPending] = useState(false);
   const route = routePlan.route;
-  const updatePlan = (next) => { planRef.current = next; setRoutePlan(next); };
+  const updatePlan = (next) => {
+    if (next.route !== planRef.current.route) {
+      navigationSelectionRef.current = null;
+      setNavigationSelectionState(null);
+    }
+    planRef.current = next; setRoutePlan(next);
+  };
   const setOrders = (value, preference) => {
     const next = typeof value === 'function' ? value(ordersRef.current) : value;
     ordersRef.current = next;
@@ -354,6 +364,12 @@ export default function App() {
 
   const saveNavigationApp = (value) => { void navigationPreference.current.select(value); };
 
+  const selectNavigation = (mode, destinationIndex = 0) => {
+    if (navigationBusy.current || planRef.current.status !== 'ready') return;
+    const next = createNavigationSelection(planRef.current.route, mode, destinationIndex);
+    if (next) { navigationSelectionRef.current = next; setNavigationSelectionState(next); }
+  };
+
   const navigationDialog = (title, message, choices) => new Promise((resolve) => {
     if (!mounted.current) { resolve(null); return; }
     Alert.alert(title, message, [
@@ -365,11 +381,16 @@ export default function App() {
   const openRoute = async ({ forceChoice = false } = {}) => {
     if (navigationBusy.current || busy.current) return;
     navigationBusy.current = true;
+    setNavigationPending(true);
+    const handoffRoute = planRef.current.route;
+    const selection = currentNavigationSelection(navigationSelectionRef.current, handoffRoute);
     try {
       const result = await openRouteNavigation({
         getCurrent: () => ({ plan: planRef.current, orders: ordersRef.current, restaurant: restaurantRef.current,
-          navigationApp: navigationAppRef.current, active: mounted.current }),
+          navigationApp: navigationAppRef.current, active: mounted.current,
+          navigationSelection: navigationSelectionRef.current }),
         navigationApp: navigationAppRef.current, platform: Platform, openURL: (url) => Linking.openURL(url),
+        mode: selection.mode, destinationIndex: selection.destinationIndex,
         canOpenURL: (url) => Linking.canOpenURL(url), androidMaps: NativeModules.RouteNavigation, forceChoice,
         chooseAlternative: ({ availability, alternatives }) => navigationDialog('Choose navigation',
           forceChoice ? 'Choose an option for this launch. Your saved preference stays the same.'
@@ -377,10 +398,14 @@ export default function App() {
               : 'The preferred app is unavailable on this device. Choose an option for this launch.',
           alternatives.map((option) => ({ label: option.label, value: option }))),
         notifyFallback: () => navigationDialog('One-stop navigation',
-          'This option opens the first delivery only. The complete route and restaurant return stay in RouteRunner.',
+          'Open one destination at a time. Return to RouteRunner to select the next delivery or the restaurant.',
           [{ label: 'Continue', value: true }]),
       });
       if (!mounted.current) return;
+      if (result.mode === 'single_destination' && planRef.current.route === handoffRoute) {
+        const next = createNavigationSelection(handoffRoute, result.mode, result.destinationIndex);
+        navigationSelectionRef.current = next; setNavigationSelectionState(next);
+      }
       if (result.status === 'opened' || result.status === 'cancelled') return;
       if (result.status === 'failed') {
         Alert.alert('Unable to open navigation', result.message, [
@@ -393,7 +418,7 @@ export default function App() {
       if (result.status === 'invalid') { Alert.alert('Review navigation destinations', result.message); return; }
       updatePlan(expireRoutePlan(planRef.current, ordersRef.current, restaurantRef.current));
       Alert.alert('Route needs recalculation', 'Review your current orders and calculate the route again before opening navigation.');
-    } finally { navigationBusy.current = false; }
+    } finally { navigationBusy.current = false; if (mounted.current) setNavigationPending(false); }
   };
 
   return (
@@ -481,6 +506,10 @@ export default function App() {
           restaurant={restaurant}
           navigationApp={navigationApp}
           onNavigate={openRoute}
+          navigationSelection={currentNavigationSelection(navigationSelection, route)}
+          onNavigationMode={(mode) => selectNavigation(mode)}
+          onNavigationDestination={(index) => selectNavigation('single_destination', index)}
+          navigationPending={navigationPending}
           plan={routePlan}
           orders={ordersInRouteOrder(routePlan, orders)}
           onMove={moveStop}
