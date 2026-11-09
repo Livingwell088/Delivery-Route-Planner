@@ -379,6 +379,8 @@ requires macOS/Xcode. Windows Android checks do not verify Apple Maps behavior.
 
 ## Reference
 
+- [Phase 9 native acceptance record and final emulator walkthrough](phase-9-native-acceptance.md)
+
 - [Phase 9 navigation regression results and remaining emulator/device checks](phase-9-regression-acceptance.md)
 
 - [Current Phase 8 driver flow, acceptance commands and device checklist](phase-8-acceptance.md)
